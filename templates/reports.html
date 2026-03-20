@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Reportes - GradeScanner{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">
+            <i class="fas fa-chart-bar text-indigo-600 mr-2"></i>Reportes
+        </h1>
+        <p class="text-gray-600 mt-2">Exporta datos y visualiza estadísticas</p>
+    </div>
+
+    <!-- Opciones de Exportación -->
+    <div class="grid md:grid-cols-2 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <h3 class="text-lg font-bold mb-4">
+                <i class="fas fa-file-excel text-green-600 mr-2"></i>Exportar a Excel
+            </h3>
+            <div class="space-y-3">
+                <button onclick="exportData('estudiantes')"
+                    class="w-full text-left p-3 hover:bg-gray-50 rounded-lg flex items-center">
+                    <i class="fas fa-users text-gray-400 mr-3"></i>
+                    <span>Exportar Estudiantes</span>
+                </button>
+                <button onclick="exportData('examenes')"
+                    class="w-full text-left p-3 hover:bg-gray-50 rounded-lg flex items-center">
+                    <i class="fas fa-file-alt text-gray-400 mr-3"></i>
+                    <span>Exportar Exámenes</span>
+                </button>
+                <button onclick="exportData('notas')"
+                    class="w-full text-left p-3 hover:bg-gray-50 rounded-lg flex items-center">
+                    <i class="fas fa-star text-gray-400 mr-3"></i>
+                    <span>Exportar Notas</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <h3 class="text-lg font-bold mb-4">
+                <i class="fas fa-filter text-indigo-600 mr-2"></i>Filtrar Reporte
+            </h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Curso</label>
+                    <select id="report-curso" class="w-full p-3 border rounded-lg" onchange="loadReportData()">
+                        <option value="">Todos los cursos</option>
+                    </select>
+                </div>
+                <button onclick="generateReport()"
+                    class="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700">
+                    <i class="fas fa-sync mr-2"></i>Generar Reporte
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vista Previa -->
+    <div class="bg-white rounded-xl shadow-lg p-6">
+        <h3 class="text-lg font-bold mb-4">Vista Previa del Reporte</h3>
+        <div id="report-preview" class="text-center py-12 text-gray-500">
+            <i class="fas fa-chart-pie text-6xl text-gray-300 mb-4"></i>
+            <p>Selecciona un curso y genera el reporte</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadCoursesForReport() {
+        const res = await fetch('/api/cursos');
+        const cursos = await res.json();
+        const select = document.getElementById('report-curso');
+        cursos.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = `${c.codigo} - ${c.nombre}`;
+            select.appendChild(opt);
+        });
+    }
+
+    async function loadReportData() {
+        const cursoId = document.getElementById('report-curso').value;
+        if (!cursoId) return;
+
+        const [examenesRes, statsRes] = await Promise.all([
+            fetch(`/api/examenes?curso_id=${cursoId}`),
+            fetch(`/api/stats?curso_id=${cursoId}`)
+        ]);
+
+        const examenes = await examenesRes.json();
+        const stats = await statsRes.json();
+
+        const container = document.getElementById('report-preview');
+
+        if (examenes.length === 0) {
+            container.innerHTML = '<p class="text-gray-500">No hay datos para este curso</p>';
+            return;
+        }
+
+        const revisados = examenes.filter(e => e.estado === 'revisado' && e.nota_final);
+        const promedio = revisados.length > 0
+            ? (revisados.reduce((a, e) => a + e.nota_final, 0) / revisados.length).toFixed(2)
+            : 0;
+
+        container.innerHTML = `
+        <div class="grid grid-cols-3 gap-6 mb-6">
+            <div class="bg-blue-50 rounded-lg p-4">
+                <div class="text-3xl font-bold text-blue-600">${examenes.length}</div>
+                <div class="text-sm text-gray-600">Total Exámenes</div>
+            </div>
+            <div class="bg-green-50 rounded-lg p-4">
+                <div class="text-3xl font-bold text-green-600">${promedio}</div>
+                <div class="text-sm text-gray-600">Nota Promedio</div>
+            </div>
+            <div class="bg-purple-50 rounded-lg p-4">
+                <div class="text-3xl font-bold text-purple-600">${revisados.length}</div>
+                <div class="text-sm text-gray-600">Revisados</div>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b">
+                        <th class="text-left py-2">Título</th>
+                        <th class="text-left py-2">Estudiante</th>
+                        <th class="text-left py-2">Estado</th>
+                        <th class="text-left py-2">Nota</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${examenes.slice(0, 10).map(e => `
+                        <tr class="border-b">
+                            <td class="py-2">${e.titulo}</td>
+                            <td class="py-2">${e.estudiante?.nombre || '-'}</td>
+                            <td class="py-2">${e.estado}</td>
+                            <td class="py-2 font-bold">${e.nota_final || '-'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+    }
+
+    async function generateReport() {
+        await loadReportData();
+    }
+
+    async function exportData(type) {
+        const res = await fetch(`/api/${type}`);
+        const data = await res.json();
+
+        // Simple CSV export
+        let csv = '';
+        if (type === 'estudiantes') {
+            csv = 'ID,Código,Nombre,Apellido,Email,Carrera\n';
+            data.forEach(e => {
+                csv += `${e.id},${e.codigo},${e.nombre},${e.apellido},${e.email},${e.carrera || ''}\n`;
+            });
+        } else if (type === 'examenes') {
+            csv = 'ID,Título,Curso,Estudiante,Estado,Nota,Fecha\n';
+            data.forEach(e => {
+                csv += `${e.id},"${e.titulo}",${e.curso?.nombre || ''},${e.estudiante?.nombre || ''},${e.estado},${e.nota_final || ''},${e.fecha_escaneo}\n`;
+            });
+        }
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${type}_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+    }
+
+    document.addEventListener('DOMContentLoaded', loadCoursesForReport);
+</script>
+{% endblock %}

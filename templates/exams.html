@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Exámenes - GradeScanner{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">
+            <i class="fas fa-file-alt text-indigo-600 mr-2"></i>Exámenes
+        </h1>
+        <p class="text-gray-600 mt-2">Historial de exámenes escaneados</p>
+    </div>
+
+    <!-- Filtros -->
+    <div class="bg-white rounded-xl shadow-lg p-4 mb-6">
+        <div class="flex flex-col md:flex-row gap-4">
+            <select id="filter-curso" class="p-3 border rounded-lg" onchange="loadExams()">
+                <option value="">Todos los cursos</option>
+            </select>
+            <select id="filter-estado" class="p-3 border rounded-lg" onchange="loadExams()">
+                <option value="">Todos los estados</option>
+                <option value="pendiente">Pendiente</option>
+                <option value="procesado">Procesado</option>
+                <option value="revisado">Revisado</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+        <table class="w-full">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="text-left py-4 px-6 text-gray-600">Título</th>
+                    <th class="text-left py-4 px-6 text-gray-600">Curso</th>
+                    <th class="text-left py-4 px-6 text-gray-600">Estudiante</th>
+                    <th class="text-left py-4 px-6 text-gray-600">Estado</th>
+                    <th class="text-left py-4 px-6 text-gray-600">Nota</th>
+                    <th class="text-left py-4 px-6 text-gray-600">Fecha</th>
+                    <th class="text-left py-4 px-6 text-gray-600">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="exams-list"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal Detalle -->
+<div id="exam-modal"
+    class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center overflow-y-auto">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 my-8">
+        <div class="p-6">
+            <div class="flex justify-between items-start mb-4">
+                <h3 class="text-xl font-bold">Detalle del Examen</h3>
+                <button onclick="closeExamModal()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            <div id="exam-detail"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function loadCoursesForFilter() {
+        const res = await fetch('/api/cursos');
+        const cursos = await res.json();
+        const select = document.getElementById('filter-curso');
+        cursos.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = `${c.codigo} - ${c.nombre}`;
+            select.appendChild(opt);
+        });
+    }
+
+    async function loadExams() {
+        const cursoId = document.getElementById('filter-curso').value;
+        const estado = document.getElementById('filter-estado').value;
+
+        let url = '/api/examenes?';
+        if (cursoId) url += `curso_id=${cursoId}&`;
+        if (estado) url += `estado=${estado}`;
+
+        const res = await fetch(url);
+        const examenes = await res.json();
+
+        const tbody = document.getElementById('exams-list');
+        if (examenes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-gray-500">No hay exámenes</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = examenes.map(e => `
+        <tr class="border-b hover:bg-gray-50">
+            <td class="py-4 px-6 font-medium">${e.titulo}</td>
+            <td class="py-4 px-6">${e.curso?.nombre || '-'}</td>
+            <td class="py-4 px-6">${e.estudiante ? e.estudiante.nombre + ' ' + e.estudiante.apellido : '-'}</td>
+            <td class="py-4 px-6">
+                <span class="px-2 py-1 rounded-full text-xs font-medium ${e.estado === 'revisado' ? 'bg-green-100 text-green-800' : e.estado === 'procesado' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}">${e.estado}</span>
+            </td>
+            <td class="py-4 px-6 font-bold ${e.nota_final >= 7 ? 'text-green-600' : e.nota_final >= 5 ? 'text-yellow-600' : 'text-red-600'}">${e.nota_final || '-'}</td>
+            <td class="py-4 px-6 text-gray-500">${new Date(e.fecha_escaneo).toLocaleDateString()}</td>
+            <td class="py-4 px-6">
+                <button onclick="viewExam(${e.id})" class="text-indigo-600 hover:text-indigo-800 mr-2"><i class="fas fa-eye"></i></button>
+                <button onclick="deleteExam(${e.id})" class="text-red-600 hover:text-red-800"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>
+    `).join('');
+    }
+
+    async function viewExam(id) {
+        const res = await fetch(`/api/examenes/${id}`);
+        const e = await res.json();
+
+        document.getElementById('exam-detail').innerHTML = `
+        <div class="space-y-4">
+            <div class="flex justify-between">
+                <div><strong>Título:</strong> ${e.titulo}</div>
+                <span class="px-3 py-1 rounded-full ${e.estado === 'revisado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${e.estado}</span>
+            </div>
+            <div><strong>Curso:</strong> ${e.curso?.nombre || '-'}</div>
+            <div><strong>Estudiante:</strong> ${e.estudiante ? e.estudiante.nombre + ' ' + e.estudiante.apellido : 'No identificado'}</div>
+            <div><strong>Nota:</strong> <span class="text-2xl font-bold ${e.nota_final >= 7 ? 'text-green-600' : e.nota_final >= 5 ? 'text-yellow-600' : 'text-red-600'}">${e.nota_final || '-'}</span> / 10</div>
+            <div><strong>Fecha:</strong> ${new Date(e.fecha_escaneo).toLocaleString()}</div>
+            <div><strong>OCR:</strong> Confianza ${(e.confianza_ocr || 0).toFixed(1)}%</div>
+            <div><strong>Texto Extraído:</strong></div>
+            <pre class="bg-gray-50 p-3 rounded text-sm whitespace-pre-wrap max-h-40 overflow-y-auto">${e.texto_ocr || 'Sin texto'}</pre>
+            ${e.imagen_path ? `<div><img src="${e.imagen_path}" class="w-full rounded-lg mt-2"></div>` : ''}
+        </div>
+    `;
+        document.getElementById('exam-modal').classList.remove('hidden');
+    }
+
+    function closeExamModal() {
+        document.getElementById('exam-modal').classList.add('hidden');
+    }
+
+    async function deleteExam(id) {
+        if (await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true }).then(r => r.isConfirmed)) {
+            await fetch(`/api/examenes/${id}`, { method: 'DELETE' });
+            loadExams();
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadCoursesForFilter();
+        loadExams();
+    });
+</script>
+{% endblock %}

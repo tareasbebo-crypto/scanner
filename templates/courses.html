@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Cursos - GradeScanner{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">
+                <i class="fas fa-book text-indigo-600 mr-2"></i>Cursos
+            </h1>
+            <p class="text-gray-600 mt-2">Gestiona los cursos disponibles</p>
+        </div>
+        <button onclick="openModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg">
+            <i class="fas fa-plus mr-2"></i>Nuevo Curso
+        </button>
+    </div>
+
+    <!-- Cursos Grid -->
+    <div id="courses-grid" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Se llena con JS -->
+    </div>
+
+    <div id="empty-courses" class="hidden text-center py-12">
+        <i class="fas fa-book text-6xl text-gray-300 mb-4"></i>
+        <p class="text-gray-500">No hay cursos registrados</p>
+    </div>
+</div>
+
+<!-- Modal Curso -->
+<div id="course-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+        <div class="p-6">
+            <h3 class="text-xl font-bold mb-4">Nuevo Curso</h3>
+            <form onsubmit="saveCourse(event)">
+                <input type="hidden" id="course-id">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Código</label>
+                        <input type="text" id="course-codigo" required class="w-full p-3 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Nombre</label>
+                        <input type="text" id="course-nombre" required class="w-full p-3 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Profesor</label>
+                        <input type="text" id="course-profesor" class="w-full p-3 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Periodo</label>
+                        <input type="text" id="course-periodo" placeholder="2024-1"
+                            class="w-full p-3 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Descripción</label>
+                        <textarea id="course-descripcion" class="w-full p-3 border rounded-lg" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="closeModal()" class="px-6 py-2 border rounded-lg">Cancelar</button>
+                    <button type="submit" class="px-6 py-2 bg-indigo-600 text-white rounded-lg">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let courses = [];
+
+    async function loadCourses() {
+        try {
+            const res = await fetch('/api/cursos');
+            courses = await res.json();
+            renderCourses();
+        } catch (e) { console.error(e); }
+    }
+
+    function renderCourses() {
+        const grid = document.getElementById('courses-grid');
+        const empty = document.getElementById('empty-courses');
+
+        if (courses.length === 0) {
+            grid.innerHTML = '';
+            empty.classList.remove('hidden');
+            return;
+        }
+
+        empty.classList.add('hidden');
+        grid.innerHTML = courses.map(c => `
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 class="font-bold text-lg">${c.nombre}</h3>
+                    <p class="text-gray-500 text-sm">${c.codigo}</p>
+                </div>
+                <span class="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs rounded">${c.periodo || 'Sin periodo'}</span>
+            </div>
+            <p class="text-gray-600 text-sm mb-4">${c.descripcion || 'Sin descripción'}</p>
+            <div class="flex justify-between items-center text-sm text-gray-500">
+                <span><i class="fas fa-user mr-1"></i>${c.profesor || 'Sin profesor'}</span>
+                <div>
+                    <button onclick="editCourse(${c.id})" class="text-indigo-600 mr-3"><i class="fas fa-edit"></i></button>
+                    <button onclick="deleteCourse(${c.id})" class="text-red-600"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    }
+
+    function openModal(id = null) {
+        document.getElementById('course-modal').classList.remove('hidden');
+        if (id) {
+            const c = courses.find(x => x.id === id);
+            document.getElementById('course-id').value = c.id;
+            document.getElementById('course-codigo').value = c.codigo;
+            document.getElementById('course-nombre').value = c.nombre;
+            document.getElementById('course-profesor').value = c.profesor || '';
+            document.getElementById('course-periodo').value = c.periodo || '';
+            document.getElementById('course-descripcion').value = c.descripcion || '';
+        } else {
+            document.querySelector('#course-modal form').reset();
+            document.getElementById('course-id').value = '';
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('course-modal').classList.add('hidden');
+    }
+
+    async function saveCourse(e) {
+        e.preventDefault();
+        const id = document.getElementById('course-id').value;
+        const data = {
+            codigo: document.getElementById('course-codigo').value,
+            nombre: document.getElementById('course-nombre').value,
+            profesor: document.getElementById('course-profesor').value,
+            periodo: document.getElementById('course-periodo').value,
+            descripcion: document.getElementById('course-descripcion').value
+        };
+
+        const url = id ? `/api/cursos/${id}` : '/api/cursos';
+        const method = id ? 'PUT' : 'POST';
+
+        await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+        closeModal();
+        loadCourses();
+        Swal.fire('Éxito', 'Curso guardado', 'success');
+    }
+
+    function editCourse(id) { openModal(id); }
+
+    async function deleteCourse(id) {
+        if (await Swal.fire({ title: '¿Eliminar?', icon: 'warning', showCancelButton: true }).then(r => r.isConfirmed)) {
+            await fetch(`/api/cursos/${id}`, { method: 'DELETE' });
+            loadCourses();
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadCourses);
+</script>
+{% endblock %}

@@ -1,0 +1,42 @@
+# GradeScanner - Requirements
+# Sistema de revisión de notas con escáner
+
+# Web Framework
+Flask==3.0.0
+Flask-CORS==4.0.0
+gunicorn==21.2.0
+
+# Database - Soporta SQLite (local) y PostgreSQL (Supabase)
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.23
+psycopg2-binary==2.9.9
+
+# Supabase
+supabase==2.3.4
+
+# OCR
+pytesseract==0.3.10
+Pillow==10.1.0
+
+# Image Processing
+opencv-python-headless==4.8.1.78
+numpy==1.26.2
+
+# Excel Export
+openpyxl==3.1.2
+pandas==2.1.3
+
+# PDF Generation
+reportlab==4.0.7
+
+# File Upload
+Werkzeug==3.0.1
+
+# Date/Time
+python-dateutil==2.8.2
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# HTTP Client
+requests==2.31.0

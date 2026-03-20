@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}Estudiantes - GradeScanner{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">
+                <i class="fas fa-users text-indigo-600 mr-2"></i>
+                Estudiantes
+            </h1>
+            <p class="text-gray-600 mt-2">Gestiona los estudiantes registrados</p>
+        </div>
+        <button onclick="openModal()"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium transition">
+            <i class="fas fa-plus mr-2"></i>Nuevo Estudiante
+        </button>
+    </div>
+
+    <!-- Search & Filter -->
+    <div class="bg-white rounded-xl shadow-lg p-4 mb-6">
+        <div class="flex flex-col md:flex-row gap-4">
+            <input type="text" id="search" placeholder="Buscar por nombre, código o email..."
+                class="flex-1 p-3 border rounded-lg" oninput="filterStudents()">
+            <select id="filter-carrera" class="p-3 border rounded-lg" onchange="filterStudents()">
+                <option value="">Todas las carreras</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Students Table -->
+    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+        <table class="w-full">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="text-left py-4 px-6 text-gray-600 font-medium">Código</th>
+                    <th class="text-left py-4 px-6 text-gray-600 font-medium">Nombre</th>
+                    <th class="text-left py-4 px-6 text-gray-600 font-medium">Email</th>
+                    <th class="text-left py-4 px-6 text-gray-600 font-medium">Carrera</th>
+                    <th class="text-left py-4 px-6 text-gray-600 font-medium">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="students-list">
+                <!-- Se llena con JS -->
+            </tbody>
+        </table>
+
+        <!-- Empty State -->
+        <div id="empty-state" class="hidden text-center py-12">
+            <i class="fas fa-users text-6xl text-gray-300 mb-4"></i>
+            <p class="text-gray-500">No hay estudiantes registrados</p>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div id="student-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+        <div class="p-6">
+            <h3 id="modal-title" class="text-xl font-bold mb-4">Nuevo Estudiante</h3>
+            <form id="student-form" onsubmit="saveStudent(event)">
+                <input type="hidden" id="student-id">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Código</label>
+                        <input type="text" id="student-codigo" required class="w-full p-3 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+                        <input type="text" id="student-nombre" required class="w-full p-3 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Apellido</label>
+                        <input type="text" id="student-apellido" required class="w-full p-3 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input type="email" id="student-email" required class="w-full p-3 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Carrera</label>
+                        <input type="text" id="student-carrera" class="w-full p-3 border rounded-lg">
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="closeModal()"
+                        class="px-6 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
+                    <button type="submit"
+                        class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let students = [];
+
+    async function loadStudents() {
+        try {
+            const response = await fetch('/api/estudiantes');
+            students = await response.json();
+            renderStudents(students);
+
+            // Cargar carreras únicas para filtro
+            const carreras = [...new Set(students.map(s => s.carrera).filter(Boolean))];
+            const select = document.getElementById('filter-carrera');
+            carreras.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c;
+                option.textContent = c;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    }
+
+    function renderStudents(data) {
+        const tbody = document.getElementById('students-list');
+        const empty = document.getElementById('empty-state');
+
+        if (data.length === 0) {
+            tbody.innerHTML = '';
+            empty.classList.remove('hidden');
+            return;
+        }
+
+        empty.classList.add('hidden');
+        tbody.innerHTML = data.map(s => `
+            <tr class="border-b hover:bg-gray-50">
+                <td class="py-4 px-6 font-medium">${s.codigo}</td>
+                <td class="py-4 px-6">${s.nombre} ${s.apellido}</td>
+                <td class="py-4 px-6 text-gray-600">${s.email}</td>
+                <td class="py-4 px-6">${s.carrera || '-'}</td>
+                <td class="py-4 px-6">
+                    <button onclick="editStudent(${s.id})" class="text-indigo-600 hover:text-indigo-800 mr-3">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button onclick="deleteStudent(${s.id})" class="text-red-600 hover:text-red-800">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function filterStudents() {
+        const search = document.getElementById('search').value.toLowerCase();
+        const carrera = document.getElementById('filter-carrera').value;
+
+        const filtered = students.filter(s => {
+            const matchSearch = !search ||
+                s.nombre.toLowerCase().includes(search) ||
+                s.apellido.toLowerCase().includes(search) ||
+                s.codigo.toLowerCase().includes(search) ||
+                s.email.toLowerCase().includes(search);
+            const matchCarrera = !carrera || s.carrera === carrera;
+            return matchSearch && matchCarrera;
+        });
+
+        renderStudents(filtered);
+    }
+
+    function openModal(id = null) {
+        document.getElementById('student-modal').classList.remove('hidden');
+        document.getElementById('modal-title').textContent = id ? 'Editar Estudiante' : 'Nuevo Estudiante';
+
+        if (id) {
+            const s = students.find(x => x.id === id);
+            document.getElementById('student-id').value = s.id;
+            document.getElementById('student-codigo').value = s.codigo;
+            document.getElementById('student-nombre').value = s.nombre;
+            document.getElementById('student-apellido').value = s.apellido;
+            document.getElementById('student-email').value = s.email;
+            document.getElementById('student-carrera').value = s.carrera || '';
+        } else {
+            document.getElementById('student-form').reset();
+            document.getElementById('student-id').value = '';
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('student-modal').classList.add('hidden');
+    }
+
+    async function saveStudent(e) {
+        e.preventDefault();
+
+        const id = document.getElementById('student-id').value;
+        const data = {
+            codigo: document.getElementById('student-codigo').value,
+            nombre: document.getElementById('student-nombre').value,
+            apellido: document.getElementById('student-apellido').value,
+            email: document.getElementById('student-email').value,
+            carrera: document.getElementById('student-carrera').value
+        };
+
+        try {
+            const url = id ? `/api/estudiantes/${id}` : '/api/estudiantes';
+            const method = id ? 'PUT' : 'POST';
+
+            await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            closeModal();
+            loadStudents();
+            Swal.fire('Éxito', 'Estudiante guardado correctamente', 'success');
+        } catch (error) {
+            Swal.fire('Error', 'No se pudo guardar el estudiante', 'error');
+        }
+    }
+
+    async function editStudent(id) {
+        openModal(id);
+    }
+
+    async function deleteStudent(id) {
+        const result = await Swal.fire({
+            title: '¿Eliminar estudiante?',
+            text: 'Esta acción no se puede deshacer',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Eliminar',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (result.isConfirmed) {
+            try {
+                await fetch(`/api/estudiantes/${id}`, { method: 'DELETE' });
+                loadStudents();
+                Swal.fire('Éxito', 'Estudiante eliminado', 'success');
+            } catch (error) {
+                Swal.fire('Error', 'No se pudo eliminar', 'error');
+            }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadStudents);
+</script>
+{% endblock %}

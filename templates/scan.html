@@ -1,0 +1,569 @@
+{% extends "base.html" %}
+
+{% block title %}Escanear Examen - GradeScanner{% endblock %}
+
+{% block extra_css %}
+<style>
+    #video-container {
+        position: relative;
+        background: #000;
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+
+    #video {
+        width: 100%;
+        display: block;
+    }
+
+    #canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    .scan-overlay {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 80%;
+        height: 70%;
+        border: 3px dashed #4F46E5;
+        border-radius: 1rem;
+        pointer-events: none;
+    }
+
+    .capture-btn {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        border: 4px solid white;
+        background: #EF4444;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .capture-btn:hover {
+        transform: scale(1.1);
+        background: #DC2626;
+    }
+
+    .capture-btn.capturing {
+        animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+
+        0%,
+        100% {
+            transform: scale(1);
+        }
+
+        50% {
+            transform: scale(1.1);
+        }
+    }
+
+    .loading-spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #4F46E5;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">
+            <i class="fas fa-camera text-indigo-600 mr-2"></i>
+            Escanear Examen
+        </h1>
+        <p class="text-gray-600 mt-2">Captura o sube una imagen del examen para procesarla</p>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-8">
+        <!-- Panel de Escaneo -->
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <!-- Selección de modo -->
+            <div class="flex space-x-4 mb-6">
+                <button id="btn-camera" class="flex-1 py-3 px-4 bg-indigo-600 text-white rounded-lg font-medium"
+                    onclick="switchMode('camera')">
+                    <i class="fas fa-camera mr-2"></i>Cámara
+                </button>
+                <button id="btn-upload" class="flex-1 py-3 px-4 bg-gray-200 text-gray-700 rounded-lg font-medium"
+                    onclick="switchMode('upload')">
+                    <i class="fas fa-upload mr-2"></i>Subir Imagen
+                </button>
+            </div>
+
+            <!-- Vista de cámara -->
+            <div id="camera-panel">
+                <div id="video-container" class="mb-4">
+                    <video id="video" autoplay playsinline></video>
+                    <canvas id="canvas"></canvas>
+                    <div class="scan-overlay"></div>
+                </div>
+
+                <div class="flex justify-center space-x-4">
+                    <button id="btn-capture" class="capture-btn" onclick="captureImage()">
+                        <i class="fas fa-camera text-white text-2xl"></i>
+                    </button>
+                    <button id="btn-switch-camera" class="px-4 py-3 bg-gray-200 rounded-lg" onclick="switchCamera()">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+
+                <p class="text-center text-gray-500 text-sm mt-4">
+                    Coloca el examen dentro del área delimitada
+                </p>
+            </div>
+
+            <!-- Panel de subida -->
+            <div id="upload-panel" class="hidden">
+                <div id="drop-zone"
+                    class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-indigo-500 transition"
+                    onclick="document.getElementById('file-input').click()">
+                    <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-4"></i>
+                    <p class="text-gray-600">Haz clic para seleccionar o arrastra una imagen</p>
+                    <p class="text-sm text-gray-400 mt-2">PNG, JPG, JPEG (máx. 16MB)</p>
+                    <input type="file" id="file-input" class="hidden" accept="image/*"
+                        onchange="handleFileSelect(event)">
+                </div>
+
+                <!-- Preview de imagen seleccionada -->
+                <div id="preview-container" class="hidden mt-4">
+                    <img id="preview-image" class="w-full rounded-lg" src="" alt="Preview">
+                    <button onclick="clearPreview()" class="mt-2 text-red-600 hover:text-red-800">
+                        <i class="fas fa-times mr-1"></i>Eliminar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Opciones adicionales -->
+            <div class="mt-6 pt-6 border-t">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Curso</label>
+                <select id="scan-curso" class="w-full p-3 border rounded-lg mb-4">
+                    <option value="">Seleccionar curso...</option>
+                </select>
+
+                <label class="block text-sm font-medium text-gray-700 mb-2">Título del examen</label>
+                <input type="text" id="scan-titulo" class="w-full p-3 border rounded-lg mb-4"
+                    placeholder="Ej: Examen Parcial 1">
+
+                <label class="block text-sm font-medium text-gray-700 mb-2">Plantilla (opcional)</label>
+                <select id="scan-plantilla" class="w-full p-3 border rounded-lg">
+                    <option value="">Sin plantilla - Escaneo manual</option>
+                </select>
+            </div>
+
+            <!-- Botón de procesar -->
+            <button id="btn-process"
+                class="w-full mt-6 bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-lg font-semibold transition disabled:opacity-50"
+                onclick="processScan()">
+                <i class="fas fa-cog mr-2"></i>Procesar Examen
+            </button>
+        </div>
+
+        <!-- Panel de Resultados -->
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">Resultados del Escaneo</h2>
+
+            <!-- Loading -->
+            <div id="loading" class="hidden text-center py-12">
+                <div class="loading-spinner mx-auto mb-4"></div>
+                <p class="text-gray-600">Pro</p>
+                cesando imagen... <p class="text-sm text-gray-400 mt-2">Extrayendo texto con OCR</p>
+            </div>
+
+            <!-- Resultados -->
+            <div id="results" class="hidden">
+                <!-- Info del examen -->
+                <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 id="result-title" class="font-bold text-lg"></h3>
+                            <p id="result-student" class="text-gray-600"></p>
+                        </div>
+                        <span id="result-status" class="px-3 py-1 rounded-full text-sm font-medium"></span>
+                    </div>
+                </div>
+
+                <!-- Nota -->
+                <div id="grade-container" class="bg-indigo-50 rounded-lg p-4 mb-4">
+                    <div class="flex items-center justify-between">
+                        <span class="text-gray-600">Nota Final:</span>
+                        <span id="result-grade" class="text-3xl font-bold text-indigo-600"></span>
+                        <span id="result-grade-max" class="text-gray-400">/ 10</span>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div id="result-grade-bar" class="bg-indigo-600 h-2 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- OCR Text -->
+                <div class="mb-4">
+                    <h4 class="font-semibold text-gray-700 mb-2">
+                        <i class="fas fa-eye mr-2 text-indigo-600"></i>Texto Extraído (OCR)
+                    </h4>
+                    <div class="bg-gray-50 rounded-lg p-3 max-h-48 overflow-y-auto">
+                        <p id="result-text" class="text-sm text-gray-700 whitespace-pre-wrap"></p>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">
+                        Confianza OCR: <span id="result-confidence">0%</span>
+                    </p>
+                </div>
+
+                <!-- Respuestas -->
+                <div class="mb-4">
+                    <h4 class="font-semibold text-gray-700 mb-2">
+                        <i class="fas fa-list mr-2 text-indigo-600"></i>Respuestas Detectadas
+                    </h4>
+                    <div id="result-answers" class="space-y-2"></div>
+                </div>
+
+                <!-- Imagen escaneada -->
+                <div>
+                    <h4 class="font-semibold text-gray-700 mb-2">
+                        <i class="fas fa-image mr-2 text-indigo-600"></i>Imagen Escaneada
+                    </h4>
+                    <img id="result-image" class="w-full rounded-lg border" src="" alt="Examen escaneado">
+                </div>
+
+                <!-- Acciones -->
+                <div class="flex space-x-2 mt-4">
+                    <button onclick="saveResult()"
+                        class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg">
+                        <i class="fas fa-save mr-2"></i>Guardar
+                    </button>
+                    <button onclick="newScan()"
+                        class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 rounded-lg">
+                        <i class="fas fa-plus mr-2"></i>Nuevo
+                    </button>
+                </div>
+            </div>
+
+            <!-- Estado inicial -->
+            <div id="empty-state" class="text-center py-12">
+                <i class="fas fa-camera text-6xl text-gray-300 mb-4"></i>
+                <p class="text-gray-500">No hay resultados aún</p>
+                <p class="text-sm text-gray-400">Escanea un examen para ver los resultados aquí</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Variables globales
+    let currentMode = 'camera';
+    let stream = null;
+    let currentFacingMode = 'environment';
+    let capturedImage = null;
+
+    // Inicializar
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadCursos();
+        await loadPlantillas();
+        if (currentMode === 'camera') {
+            startCamera();
+        }
+    });
+
+    // Cargar cursos
+    async function loadCursos() {
+        try {
+            const response = await fetch('/api/cursos');
+            const cursos = await response.json();
+            const select = document.getElementById('scan-curso');
+            cursos.forEach(curso => {
+                const option = document.createElement('option');
+                option.value = curso.id;
+                option.textContent = `${curso.codigo} - ${curso.nombre}`;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Error cargando cursos:', error);
+        }
+    }
+
+    // Cargar plantillas
+    async function loadPlantillas() {
+        try {
+            const response = await fetch('/api/plantillas');
+            const plantillas = await response.json();
+            const select = document.getElementById('scan-plantilla');
+            plantillas.forEach(p => {
+                const option = document.createElement('option');
+                option.value = p.id;
+                option.textContent = p.nombre;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            console.error('Error cargando plantillas:', error);
+        }
+    }
+
+    // Cambiar modo
+    function switchMode(mode) {
+        currentMode = mode;
+
+        document.getElementById('btn-camera').className = mode === 'camera'
+            ? 'flex-1 py-3 px-4 bg-indigo-600 text-white rounded-lg font-medium'
+            : 'flex-1 py-3 px-4 bg-gray-200 text-gray-700 rounded-lg font-medium';
+
+        document.getElementById('btn-upload').className = mode === 'upload'
+            ? 'flex-1 py-3 px-4 bg-indigo-600 text-white rounded-lg font-medium'
+            : 'flex-1 py-3 px-4 bg-gray-200 text-gray-700 rounded-lg font-medium';
+
+        document.getElementById('camera-panel').classList.toggle('hidden', mode !== 'camera');
+        document.getElementById('upload-panel').classList.toggle('hidden', mode !== 'upload');
+
+        if (mode === 'camera') {
+            startCamera();
+        } else {
+            stopCamera();
+        }
+    }
+
+    // Iniciar cámara
+    async function startCamera() {
+        try {
+            const constraints = {
+                video: {
+                    facingMode: currentFacingMode,
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                }
+            };
+
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            document.getElementById('video').srcObject = stream;
+        } catch (error) {
+            console.error('Error accediendo a la cámara:', error);
+            Swal.fire('Error', 'No se pudo acceder a la cámara. Verifica los permisos.', 'error');
+        }
+    }
+
+    // Detener cámara
+    function stopCamera() {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+        }
+    }
+
+    // Cambiar cámara
+    function switchCamera() {
+        currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+        if (currentMode === 'camera') {
+            stopCamera();
+            startCamera();
+        }
+    }
+
+    // Capturar imagen
+    function captureImage() {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0);
+
+        capturedImage = canvas.toDataURL('image/jpeg');
+
+        // Mostrar preview
+        document.getElementById('preview-container').classList.remove('hidden');
+        document.getElementById('preview-image').src = capturedImage;
+
+        // Vibrar si está disponible
+        if (navigator.vibrate) {
+            navigator.vibrate(100);
+        }
+    }
+
+    // Manejar selección de archivo
+    function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                capturedImage = e.target.result;
+                document.getElementById('preview-container').classList.remove('hidden');
+                document.getElementById('preview-image').src = capturedImage;
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    // Limpiar preview
+    function clearPreview() {
+        capturedImage = null;
+        document.getElementById('preview-container').classList.add('hidden');
+        document.getElementById('file-input').value = '';
+    }
+
+    // Procesar escaneo
+    async function processScan() {
+        if (!capturedImage) {
+            Swal.fire('Error', 'Por favor captura o selecciona una imagen primero', 'warning');
+            return;
+        }
+
+        const cursoId = document.getElementById('scan-curso').value;
+        const titulo = document.getElementById('scan-titulo').value || 'Examen sin título';
+        const plantillaId = document.getElementById('scan-plantilla').value;
+
+        // Mostrar loading
+        document.getElementById('loading').classList.remove('hidden');
+        document.getElementById('results').classList.add('hidden');
+        document.getElementById('empty-state').classList.add('hidden');
+        document.getElementById('btn-process').disabled = true;
+
+        try {
+            // Convertir imagen a blob
+            const response = await fetch(capturedImage);
+            const blob = await response.blob();
+
+            const formData = new FormData();
+            formData.append('file', blob, 'exam.jpg');
+            formData.append('curso_id', cursoId);
+            formData.append('titulo', titulo);
+            if (plantillaId) {
+                formData.append('plantilla_id', plantillaId);
+            }
+
+            const result = await fetch('/api/scan', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await result.json();
+
+            if (!result.ok) {
+                throw new Error(data.error || 'Error al procesar');
+            }
+
+            // Mostrar resultados
+            displayResults(data);
+
+        } catch (error) {
+            console.error('Error:', error);
+            Swal.fire('Error', error.message, 'error');
+        } finally {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('btn-process').disabled = false;
+        }
+    }
+
+    // Mostrar resultados
+    function displayResults(data) {
+        document.getElementById('results').classList.remove('hidden');
+
+        // Info básica
+        document.getElementById('result-title').textContent = data.examen.titulo;
+        document.getElementById('result-student').textContent = data.student_code
+            ? `Código: ${data.student_code}`
+            : 'Estudiante no identificado';
+
+        // Estado
+        const statusEl = document.getElementById('result-status');
+        statusEl.textContent = data.examen.estado;
+        statusEl.className = `px-3 py-1 rounded-full text-sm font-medium ${data.examen.estado === 'revisado' ? 'bg-green-100 text-green-800' :
+                data.examen.estado === 'procesado' ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-gray-100 text-gray-800'
+            }`;
+
+        // Nota
+        if (data.grade) {
+            document.getElementById('grade-container').classList.remove('hidden');
+            document.getElementById('result-grade').textContent = data.grade.nota;
+            document.getElementById('result-grade-bar').style.width = `${data.grade.porcentaje}%`;
+        } else {
+            document.getElementById('grade-container').classList.add('hidden');
+        }
+
+        // OCR
+        document.getElementById('result-text').textContent = data.ocr.text || 'No se detectó texto';
+        document.getElementById('result-confidence').textContent = `${data.ocr.confidence.toFixed(1)}%`;
+
+        // Respuestas
+        const answersEl = document.getElementById('result-answers');
+        answersEl.innerHTML = '';
+
+        if (data.extracted_answers && data.extracted_answers.length > 0) {
+            data.extracted_answers.forEach(ans => {
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center bg-gray-50 p-2 rounded';
+                div.innerHTML = `
+                    <span class="font-medium">Pregunta ${ans.pregunta}</span>
+                    <span class="px-2 py-1 bg-indigo-100 text-indigo-800 rounded">${ans.respuesta}</span>
+                `;
+                answersEl.appendChild(div);
+            });
+        } else {
+            answersEl.innerHTML = '<p class="text-gray-500 text-sm">No se detectaron respuestas</p>';
+        }
+
+        // Imagen
+        document.getElementById('result-image').src = data.examen.imagen_path;
+
+        // Guardar referencia
+        window.currentExamenId = data.examen.id;
+    }
+
+    // Guardar resultado
+    async function saveResult() {
+        if (!window.currentExamenId) return;
+
+        try {
+            await fetch(`/api/examenes/${window.currentExamenId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ estado: 'revisado' })
+            });
+
+            Swal.fire('Guardado', 'Examen guardado correctamente', 'success');
+        } catch (error) {
+            Swal.fire('Error', 'No se pudo guardar el examen', 'error');
+        }
+    }
+
+    // Nuevo escaneo
+    function newScan() {
+        capturedImage = null;
+        clearPreview();
+
+        document.getElementById('results').classList.add('hidden');
+        document.getElementById('empty-state').classList.remove('hidden');
+        document.getElementById('scan-titulo').value = '';
+
+        window.currentExamenId = null;
+    }
+
+    // Limpiar al salir
+    window.addEventListener('beforeunload', () => {
+        stopCamera();
+    });
+</script>
+{% endblock %}
