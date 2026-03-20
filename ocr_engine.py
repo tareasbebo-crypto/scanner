@@ -1,6 +1,7 @@
 """
 GradeScanner - OCR Engine
 Motor de reconocimiento óptico de caracteres para escaneo de exámenes
+Soporta opción múltiple y opción libre (respuesta abierta)
 """
 
 import os
@@ -113,7 +114,7 @@ class OCREngine:
             }
     
     def extract_answers(self, text, answer_pattern=None):
-        """Extrae respuestas del texto reconocido"""
+        """Extrae respuestas de opción múltiple del texto reconocido"""
         answers = []
         
         # Patrones comunes para respuestas (soporta A-F)
@@ -138,6 +139,25 @@ class OCREngine:
         # Ordenar por número de pregunta
         answers.sort(key=lambda x: x['pregunta'])
         return answers
+    
+    def extract_free_text(self, text):
+        """Extrae texto para preguntas de respuesta libre"""
+        # Limpiar el texto
+        lines = text.split('\n')
+        cleaned_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            # Ignorar líneas que parecen ser solo números de pregunta
+            if not re.match(r'^[\d\.\)\(:]+$', line):
+                if line:
+                    cleaned_lines.append(line)
+        
+        return {
+            'texto_completo': text,
+            'lineas_limpias': cleaned_lines,
+            'palabras': len(text.split())
+        }
     
     def detect_student_code(self, text):
         """Detecta el código de estudiante en el texto"""
@@ -171,7 +191,7 @@ class OCREngine:
         return results
     
     def grade_answers(self, student_answers, correct_answers):
-        """Califica las respuestas comparando con las correctas"""
+        """Califica las respuestas de opción múltiple"""
         resultados = []
         puntos_totales = 0
         puntos_obtenidos = 0
@@ -187,8 +207,6 @@ class OCREngine:
                 if respuesta.get('pregunta') == pregunta_num:
                     respuesta_estudiante = respuesta.get('respuesta', '').upper()
                     break
-            else:
-                pass  # No se encontró respuesta
             
             # Calcular puntos
             es_correcta = respuesta_estudiante == respuesta_correcta
@@ -216,17 +234,83 @@ class OCREngine:
             'nota': round(nota, 2),
             'porcentaje': round((puntos_obtenidos / puntos_totales * 100), 2) if puntos_totales > 0 else 0
         }
+    
+    def grade_free_response(self, extracted_text, preguntas):
+        """Califica respuestas de opción libre comparando palabras clave"""
+        resultados = []
+        puntos_totales = 0
+        puntos_obtenidos = 0
+        
+        # Texto completo del estudiante
+        texto_estudiante = extracted_text.get('texto_completo', '').lower()
+        
+        for pregunta in preguntas:
+            pregunta_num = pregunta.get('pregunta', 1)
+            puntos = pregunta.get('puntos', 1)
+            
+            # Obtener palabras clave
+            palabras_clave = pregunta.get('palabras_clave', [])
+            if isinstance(palabras_clave, str):
+                palabras_clave = [p.strip() for p in palabras_clave.split(',')]
+            
+            # Contar coincidencias
+            coincidencias_encontradas = 0
+            encontradas = []
+            for palabra in palabras_clave:
+                palabra_lower = palabra.lower()
+                if palabra_lower in texto_estudiante:
+                    coincidencias_encontradas += 1
+                    encontradas.append(palabra)
+            
+            # Calcular porcentaje de coincidencia
+            total_palabras = len(palabras_clave)
+            porcentaje = (coincidencias_encontradas / total_palabras * 100) if total_palabras > 0 else 0
+            
+            # Calificar: puntos completos si hay más del 50% de palabras clave
+            if porcentaje >= 50:
+                puntos_obtenidos_q = puntos
+            elif porcentaje >= 30:
+                puntos_obtenidos_q = puntos * 0.5
+            else:
+                puntos_obtenidos_q = 0
+            
+            resultados.append({
+                'pregunta': pregunta_num,
+                'respuesta_texto': texto_estudiante[:200] + '...' if len(texto_estudiante) > 200 else texto_estudiante,
+                'respuesta_esperada': ', '.join(palabras_clave),
+                'palabras_clave_encontradas': encontradas,
+                'coincidencias': round(porcentaje, 2),
+                'puntos': puntos,
+                'puntos_obtenidos': round(puntos_obtenidos_q, 2)
+            })
+            
+            puntos_totales += puntos
+            puntos_obtenidos += puntos_obtenidos_q
+        
+        # Calcular nota sobre 10
+        nota = (puntos_obtenidos / puntos_totales * 10) if puntos_totales > 0 else 0
+        
+        return {
+            'resultados': resultados,
+            'puntos_totales': puntos_totales,
+            'puntos_obtenidos': round(puntos_obtenidos, 2),
+            'nota': round(nota, 2),
+            'porcentaje': round((puntos_obtenidos / puntos_totales * 100), 2) if puntos_totales > 0 else 0
+        }
 
 
-def process_exam_image(image_path, correct_answers=None, config=None):
+def process_exam_image(image_path, correct_answers=None, tipo_examen='multiple_choice', config=None):
     """Procesa una imagen de examen y retorna los resultados"""
     engine = OCREngine(config)
     
     # Extraer texto con confianza
     ocr_result = engine.extract_text_with_confidence(image_path)
     
-    # Extraer preguntas y respuestas
-    extracted = engine.extract_answers(ocr_result['text'])
+    # Extraer preguntas y respuestas según el tipo
+    if tipo_examen == 'multiple_choice':
+        extracted = engine.extract_answers(ocr_result['text'])
+    else:
+        extracted = engine.extract_free_text(ocr_result['text'])
     
     # Detectar código de estudiante
     student_code = engine.detect_student_code(ocr_result['text'])
@@ -243,7 +327,10 @@ def process_exam_image(image_path, correct_answers=None, config=None):
     
     # Si hay respuestas correctas, calificar
     if correct_answers:
-        grade_result = engine.grade_answers(extracted, correct_answers)
+        if tipo_examen == 'multiple_choice':
+            grade_result = engine.grade_answers(extracted, correct_answers)
+        else:
+            grade_result = engine.grade_free_response(extracted, correct_answers)
         result['grade'] = grade_result
     
     return result
@@ -256,6 +343,7 @@ if __name__ == '__main__':
     print("Funciones disponibles:")
     print("- extract_text(): Extrae texto de una imagen")
     print("- extract_text_with_confidence(): Extrae texto con nivel de confianza")
-    print("- extract_answers(): Extrae respuestas type A/B/C/D")
-    print("- detect_student_code(): Detecta código de estudiante")
-    print("- grade_answers(): Califica respuestas automáticamente")
+    print("- extract_answers(): Extrae respuestas type A/B/C/D (opción múltiple)")
+    print("- extract_free_text(): Extrae texto para respuesta libre")
+    print("- grade_answers(): Califica respuestas múltiples")
+    print("- grade_free_response(): Califica respuestas por palabras clave")
