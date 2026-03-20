@@ -15,7 +15,7 @@ psycopg2-binary==2.9.9
 supabase==2.3.4
 
 # OCR
-pytesseract==0.3.10
+pytesseract>=0.3.11
 Pillow==10.4.0
 
 # Image Processing
