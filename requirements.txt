@@ -8,7 +8,7 @@ gunicorn==21.2.0
 
 # Database - Soporta SQLite (local) y PostgreSQL (Supabase)
 Flask-SQLAlchemy==3.1.1
-SQLAlchemy==2.0.23
+SQLAlchemy>=2.0.36
 psycopg2-binary==2.9.9
 
 # Supabase
