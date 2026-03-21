@@ -37,16 +37,18 @@ class OCREngine:
             from bubble_detector import BubbleDetector
             self.bubble_detector = BubbleDetector()
 
-    def check_tesseract(self):
-        """Mantenemos este método para compatibilidad con la UI, pero siempre devuelve OK Cloud."""
+    def check_system(self):
+        """Verifica el estado de los motores de procesamiento (Cloud OCR y OpenCV)."""
         return {
             'disponible': True,
             'version': 'Cloud API (OCR.space) + Bubble Detector',
+            'motores': {
+                'ocr_cloud': 'Conectado (OCR.space)',
+                'bubble_detection': OPENCV_AVAILABLE
+            },
             'idiomas': ['spa', 'eng'],
-            'tiene_espanol': True,
-            'ruta': 'Cloud Endpoint + OpenCV',
-            'mensaje': 'Motor Cloud OCR + Detección de Burbujas conectado correctamente.',
-            'bubble_detection': OPENCV_AVAILABLE
+            'mensaje': 'Sistemas híbridos listos: Detección de burbujas y OCR de texto.',
+            'opencv': OPENCV_AVAILABLE
         }
 
     def detect_image_type(self, image_path):

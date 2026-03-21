@@ -289,11 +289,13 @@
                 </div>
 
                 <!-- Imagen escaneada -->
-                <div>
+                <!-- La imagen NO se guarda en el servidor; se muestra localmente -->
+                <div id="local-image-container">
                     <h4 class="font-semibold text-gray-700 mb-2">
-                        <i class="fas fa-image mr-2 text-indigo-600"></i>Imagen Escaneada
+                        <i class="fas fa-image mr-2 text-indigo-600"></i>Imagen Procesada
                     </h4>
-                    <img id="result-image" class="w-full rounded-lg border" src="" alt="Examen escaneado">
+                    <img id="result-image" class="w-full rounded-lg border" src="" alt="Examen procesado" style="display:none">
+                    <p class="text-xs text-gray-400 mt-1 italic"><i class="fas fa-info-circle mr-1"></i>La imagen no se almacena en el servidor.</p>
                 </div>
 
                 <!-- Acciones -->
@@ -369,50 +371,8 @@
         event.target.className = event.target.className.replace('bg-indigo-100 text-indigo-700', 'bg-indigo-200 text-indigo-800');
     }
 
-    // Inicializar
-    document.addEventListener('DOMContentLoaded', async () => {
-        await loadSecciones();
-        await loadPlantillas();
-        if (currentMode === 'camera') {
-            startCamera();
-        }
-    });
-
-    // Cargar secciones
-    async function loadSecciones() {
-        try {
-            const response = await fetch('/api/secciones');
-            const secciones = await response.json();
-            const select = document.getElementById('scan-seccion');
-            secciones.forEach(s => {
-                const option = document.createElement('option');
-                option.value = s.id;
-                option.textContent = s.nombre_completo;
-                select.appendChild(option);
-            });
-        } catch (error) {
-            console.error('Error cargando secciones:', error);
-        }
-    }
-
-
-
-    // Cargar plantillas
-    async function loadPlantillas() {
-        try {
-            const response = await fetch('/api/plantillas');
-            const plantillas = await response.json();
-            const select = document.getElementById('scan-plantilla');
-            plantillas.forEach(p => {
-                const option = document.createElement('option');
-                option.value = p.id;
-                option.textContent = p.nombre;
-                select.appendChild(option);
-            });
-        } catch (error) {
-            console.error('Error cargando plantillas:', error);
-        }
-    }
+    // Inicializar: la cámara se inicia desde initScan() (window.load)
+    // NO duplicar carga de secciones/plantillas aquí
 
     // Cambiar modo
     function switchMode(mode) {
@@ -675,7 +635,14 @@
         }
 
         // Imagen
-        document.getElementById('result-image').src = data.examen.imagen_path;
+        // Mostrar la imagen capturada localmente (no viene del servidor)
+        const imgEl = document.getElementById('result-image');
+        if (capturedImage) {
+            imgEl.src = capturedImage;
+            imgEl.style.display = 'block';
+        } else {
+            imgEl.style.display = 'none';
+        }
 
         // Guardar referencia
         window.currentExamenId = data.examen.id;
@@ -706,6 +673,8 @@
         document.getElementById('results').classList.add('hidden');
         document.getElementById('empty-state').classList.remove('hidden');
         document.getElementById('scan-titulo').value = '';
+        document.getElementById('scan-estudiante').value = '';
+        document.getElementById('result-image').style.display = 'none';
 
         window.currentExamenId = null;
     }
@@ -743,7 +712,10 @@
         }
     }
 
-    // Cargar las secciones y plantillas al iniciar
+    // Cache global de plantillas para filtrado por sección
+    let allPlantillas = [];
+
+    // Cargar las secciones y plantillas al iniciar (UNA sola vez)
     async function initScan() {
         await checkOCRStatus();
 
@@ -752,6 +724,8 @@
             const res = await fetch('/api/secciones');
             const secciones = await res.json();
             const select = document.getElementById('scan-seccion');
+            // Limpiar antes de agregar para evitar duplicados
+            select.innerHTML = '<option value="">Seleccionar sección...</option>';
             secciones.forEach(s => {
                 const opt = document.createElement('option');
                 opt.value = s.id;
@@ -760,18 +734,36 @@
             });
         } catch (e) { console.error('Error cargando secciones', e); }
 
-        // Cargar plantillas
+        // Cargar plantillas y guardar en caché
         try {
             const res = await fetch('/api/plantillas');
-            const plantillas = await res.json();
-            const select = document.getElementById('scan-plantilla');
-            plantillas.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = p.nombre;
-                select.appendChild(opt);
-            });
+            allPlantillas = await res.json();
+            renderPlantillas(null); // mostrar todas al inicio
         } catch (e) { console.error('Error cargando plantillas', e); }
+
+        // Filtrar plantillas cuando cambia la sección
+        document.getElementById('scan-seccion').addEventListener('change', function() {
+            renderPlantillas(this.value ? parseInt(this.value) : null);
+        });
+
+        if (currentMode === 'camera') {
+            startCamera();
+        }
+    }
+
+    // Renderizar select de plantillas
+    function renderPlantillas(seccionId) {
+        const select = document.getElementById('scan-plantilla');
+        select.innerHTML = '<option value="">Sin plantilla - Escaneo manual</option>';
+        const filtradas = seccionId
+            ? allPlantillas.filter(p => p.seccion_id === seccionId)
+            : allPlantillas;
+        filtradas.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.nombre + (p.seccion ? ` (${p.seccion.nombre_completo})` : '');
+            select.appendChild(opt);
+        });
     }
 
     window.addEventListener('load', initScan);

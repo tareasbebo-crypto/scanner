@@ -6,11 +6,9 @@ Solo examenes: permite registrar plantillas (opcion multiple y opcion libre)
 
 import os
 import json
-import uuid
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_cors import CORS
-from werkzeug.utils import secure_filename
 
 from database import db, init_app
 from config import get_config
@@ -279,9 +277,12 @@ def scan_examen():
         return jsonify({'error': 'No se seleccionó ningún archivo'}), 400
     
     if file and allowed_file(file.filename):
-        # Generar nombre único para el archivo
-        filename = f"{uuid.uuid4()}_{secure_filename(file.filename)}"
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        # Usar archivo temporal que se eliminará al terminar (NO se guarda permanentemente)
+        import tempfile
+        suffix = '.' + file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else '.jpg'
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        filepath = tmp.name
+        tmp.close()
         file.save(filepath)
         
         titulo = request.form.get('titulo', 'Evaluación sin título')
@@ -299,7 +300,6 @@ def scan_examen():
         # Número de preguntas esperado (opcional)
         num_questions = request.form.get('num_questions', type=int)
         
-        # Procesar
         try:
             # Obtener plantilla si existe
             plantilla = Plantilla.query.get(plantilla_id) if plantilla_id else None
@@ -309,10 +309,8 @@ def scan_examen():
                 try:
                     correct = json.loads(plantilla.respuestas_correctas)
                     if correct:
-                        # Inferir opciones disponibles de las respuestas correctas
                         all_opts = set(c.get('respuesta', '').upper() for c in correct if c.get('respuesta'))
                         if all_opts:
-                            # Asegurar que incluimos todas las letras hasta la máxima
                             max_opt = max(all_opts)
                             options = [chr(c) for c in range(ord('A'), ord(max_opt) + 1)]
                         if not num_questions:
@@ -326,7 +324,6 @@ def scan_examen():
                 force_mode = 'bubble'
             elif detection_mode == 'text':
                 force_mode = 'text'
-            # 'auto' = None (auto-detectar)
             
             # Usar el método híbrido de procesamiento
             result = ocr_engine.process_image(
@@ -356,13 +353,13 @@ def scan_examen():
             
             extracted_answers = result.get('answers', [])
             
-            # Crear examen en la base de datos
+            # Crear examen en la base de datos (sin ruta de imagen)
             examen = Examen(
                 titulo=titulo,
                 nombre_estudiante=nombre_estudiante or None,
                 seccion_id=seccion_id,
                 plantilla_id=plantilla_id,
-                imagen_path=f"/uploads/{filename}",
+                imagen_path=None,  # No se guarda la imagen permanentemente
                 texto_ocr=result.get('text', ''),
                 confianza_ocr=result.get('confidence', 0),
                 estado='procesado' if plantilla else 'pendiente'
@@ -414,6 +411,11 @@ def scan_examen():
             import traceback
             traceback.print_exc()
             return jsonify({'error': f'Error al procesar: {str(e)}'}), 500
+        
+        finally:
+            # Siempre eliminar el archivo temporal
+            if os.path.exists(filepath):
+                os.remove(filepath)
     
     return jsonify({'error': 'Tipo de archivo no permitido'}), 400
 
