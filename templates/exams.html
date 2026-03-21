@@ -12,8 +12,8 @@
     </div>
 
     <!-- Filtros -->
-    <div class="bg-white rounded-xl shadow-lg p-4 mb-6">
-        <div class="flex flex-col md:flex-row gap-4">
+    <div class="bg-white rounded-xl shadow-lg p-4 mb-6 overflow-x-auto">
+        <div class="flex flex-col md:flex-row gap-4 min-w-max md:min-w-0">
             <input id="filter-nombre" type="text" placeholder="🔍 Buscar por estudiante..." 
                 class="p-3 border rounded-lg flex-1" oninput="loadExams()">
             <select id="filter-seccion" class="p-3 border rounded-lg" onchange="loadExams()">
@@ -25,7 +25,7 @@
                 <option value="procesado">Procesado</option>
                 <option value="revisado">Revisado</option>
             </select>
-            <button onclick="exportCSV()" class="px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium whitespace-nowrap">
+            <button onclick="exportCSV()" class="px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium whitespace-nowrap whitespace-nowrap">
                 <i class="fas fa-download mr-1"></i> Exportar CSV
             </button>
         </div>
@@ -48,8 +48,8 @@
     </div>
 
     <!-- Tabla -->
-    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-        <table class="w-full">
+    <div class="bg-white rounded-xl shadow-lg overflow-x-auto">
+        <table class="w-full min-w-[800px]">
             <thead class="bg-gray-50">
                 <tr>
                     <th class="text-left py-4 px-6 text-gray-600">Estudiante</th>
@@ -86,6 +86,7 @@
 {% block extra_js %}
 <script>
     let allExams = [];
+    let filteredExams = [];
 
     async function loadSeccionesForFilter() {
         try {
@@ -122,6 +123,8 @@
                 (e.nombre_estudiante || e.titulo || '').toLowerCase().includes(nombreFiltro)
             );
         }
+        
+        filteredExams = examenes;
 
         // Stats rápidas
         const conNota = examenes.filter(e => e.nota_final !== null);
@@ -270,9 +273,12 @@
     }
 
     function exportCSV() {
-        if (!allExams.length) return;
+        if (!filteredExams.length) {
+            Swal.fire('Atención', 'No hay datos para exportar', 'warning');
+            return;
+        }
         const rows = [['Estudiante', 'Título', 'Sección', 'Nota', 'Estado', 'Fecha']];
-        allExams.forEach(e => {
+        filteredExams.forEach(e => {
             rows.push([
                 e.nombre_estudiante || '-',
                 e.titulo,
