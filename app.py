@@ -235,9 +235,24 @@ def delete_plantilla(id):
 
 # ==================== API: EXÁMENES Y ESCANEO ====================
 
+@app.route('/api/ocr/status', methods=['GET'])
+def ocr_status():
+    """Verifica el estado del motor OCR y Tesseract"""
+    status = ocr_engine.check_tesseract()
+    return jsonify(status), (200 if status.get('disponible') else 503)
+
+
 @app.route('/api/scan', methods=['POST'])
 def scan_examen():
-    """Escanea un examen desde una imagen"""
+    """Escanea un examen desde una imagen"""    
+    # Verificar Tesseract antes de procesar
+    ocr_status_check = ocr_engine.check_tesseract()
+    if not ocr_status_check.get('disponible'):
+        return jsonify({
+            'error': 'Motor OCR no disponible',
+            'detalle': ocr_status_check.get('mensaje'),
+            'solucion': 'Instala Tesseract OCR desde https://github.com/UB-Mannheim/tesseract/releases (versión Windows 64-bit). Marca "Spanish" durante la instalación.'
+        }), 503
     if 'file' not in request.files:
         return jsonify({'error': 'No se recibió ningún archivo'}), 400
     

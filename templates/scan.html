@@ -91,13 +91,16 @@
 {% block content %}
 <div class="max-w-7xl mx-auto">
     <!-- Header -->
-    <div class="mb-8">
+    <div class="mb-6">
         <h1 class="text-3xl font-bold text-gray-900">
             <i class="fas fa-camera text-indigo-600 mr-2"></i>
             Escanear Examen
         </h1>
         <p class="text-gray-600 mt-2">Captura o sube una imagen del examen para procesarla</p>
     </div>
+
+    <!-- Banner de estado del OCR -->
+    <div id="ocr-status-banner" class="hidden mb-6"></div>
 
     <div class="grid lg:grid-cols-2 gap-8">
         <!-- Panel de Escaneo -->
@@ -630,5 +633,97 @@
     window.addEventListener('beforeunload', () => {
         stopCamera();
     });
+
+    // ==================== VERIFICACIÓN OCR AL CARGAR ====================
+    async function checkOCRStatus() {
+        try {
+            const res = await fetch('/api/ocr/status');
+            const data = await res.json();
+            const banner = document.getElementById('ocr-status-banner');
+            banner.classList.remove('hidden');
+
+            if (data.disponible) {
+                const tieneEsp = data.tiene_espanol;
+                banner.innerHTML = `
+                    <div class="flex items-start gap-3 p-4 rounded-xl border ${tieneEsp ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-300'}">
+                        <i class="fas ${tieneEsp ? 'fa-check-circle text-green-500' : 'fa-exclamation-triangle text-yellow-500'} text-xl mt-0.5"></i>
+                        <div>
+                            <p class="font-semibold ${tieneEsp ? 'text-green-800' : 'text-yellow-800'}">
+                                ${tieneEsp ? '✅ Tesseract OCR listo' : '⚠️ Tesseract instalado pero sin soporte en español'}
+                            </p>
+                            <p class="text-sm mt-1 ${tieneEsp ? 'text-green-600' : 'text-yellow-700'}">
+                                ${data.mensaje}
+                            </p>
+                            ${!tieneEsp ? `
+                            <p class="text-xs mt-2 text-yellow-600">
+                                Para añadir español: descarga <code class="bg-yellow-100 px-1 rounded">spa.traineddata</code> desde 
+                                <a href="https://github.com/tesseract-ocr/tessdata" target="_blank" class="underline">tessdata</a> 
+                                y colócalo en la carpeta <code class="bg-yellow-100 px-1 rounded">tessdata</code> de Tesseract.
+                            </p>` : ''}
+                        </div>
+                    </div>`;
+            } else {
+                banner.innerHTML = `
+                    <div class="flex items-start gap-3 p-4 rounded-xl border bg-red-50 border-red-300">
+                        <i class="fas fa-times-circle text-red-500 text-xl mt-0.5"></i>
+                        <div class="flex-1">
+                            <p class="font-semibold text-red-800">❌ Tesseract OCR no está instalado</p>
+                            <p class="text-sm mt-1 text-red-700">Sin Tesseract, el escáner no puede leer el texto de las imágenes.</p>
+                            <div class="mt-3 bg-white rounded-lg p-3 border border-red-200">
+                                <p class="text-sm font-semibold text-gray-700 mb-2">📥 Cómo instalar:</p>
+                                <ol class="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                                    <li>Descarga el instalador: <a href="https://github.com/UB-Mannheim/tesseract/releases" target="_blank" class="text-indigo-600 underline font-medium">UB-Mannheim Tesseract (GitHub)</a></li>
+                                    <li>Ejecuta el instalador → en "Additional language data" marca <strong>Spanish</strong></li>
+                                    <li>Instala en <code class="bg-gray-100 px-1 rounded text-xs">C:\\Program Files\\Tesseract-OCR\\</code></li>
+                                    <li>Reinicia la aplicación</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>`;
+                // Deshabilitar botón de procesar
+                const btn = document.getElementById('btn-process');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.title = 'Tesseract OCR no está instalado';
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            }
+        } catch (e) {
+            console.warn('No se pudo verificar estado OCR:', e);
+        }
+    }
+
+    // Cargar las secciones y plantillas al iniciar
+    async function initScan() {
+        await checkOCRStatus();
+
+        // Cargar secciones
+        try {
+            const res = await fetch('/api/secciones');
+            const secciones = await res.json();
+            const select = document.getElementById('scan-seccion');
+            secciones.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.nombre_completo;
+                select.appendChild(opt);
+            });
+        } catch (e) { console.error('Error cargando secciones', e); }
+
+        // Cargar plantillas
+        try {
+            const res = await fetch('/api/plantillas');
+            const plantillas = await res.json();
+            const select = document.getElementById('scan-plantilla');
+            plantillas.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = `${p.nombre} (${p.tipo === 'multiple_choice' ? 'Opción Múltiple' : p.tipo === 'libre' ? 'Opción Libre' : p.tipo})`;
+                select.appendChild(opt);
+            });
+        } catch (e) { console.error('Error cargando plantillas', e); }
+    }
+
+    window.addEventListener('load', initScan);
 </script>
 {% endblock %}

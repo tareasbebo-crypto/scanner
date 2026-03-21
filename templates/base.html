@@ -35,20 +35,20 @@
                 </a>
 
                 <!-- Menú principal -->
-                <div class="hidden md:flex items-center space-x-4">
-                    <a href="/dashboard" class="hover:bg-indigo-700 px-3 py-2 rounded-md transition">
+                <div class="hidden md:flex items-center space-x-1" id="nav-links">
+                    <a href="/dashboard" class="nav-link hover:bg-indigo-700 px-3 py-2 rounded-md transition">
                         <i class="fas fa-chart-line mr-2"></i>Dashboard
                     </a>
-                    <a href="/scan" class="hover:bg-indigo-700 px-3 py-2 rounded-md transition">
+                    <a href="/scan" class="nav-link hover:bg-indigo-700 px-3 py-2 rounded-md transition">
                         <i class="fas fa-camera mr-2"></i>Escanear
                     </a>
-                    <a href="/templates" class="hover:bg-indigo-700 px-3 py-2 rounded-md transition">
+                    <a href="/templates" class="nav-link hover:bg-indigo-700 px-3 py-2 rounded-md transition">
                         <i class="fas fa-clipboard-list mr-2"></i>Plantillas
                     </a>
-                    <a href="/secciones" class="hover:bg-indigo-700 px-3 py-2 rounded-md transition">
+                    <a href="/secciones" class="nav-link hover:bg-indigo-700 px-3 py-2 rounded-md transition">
                         <i class="fas fa-users mr-2"></i>Secciones
                     </a>
-                    <a href="/exams" class="hover:bg-indigo-700 px-3 py-2 rounded-md transition">
+                    <a href="/exams" class="nav-link hover:bg-indigo-700 px-3 py-2 rounded-md transition">
                         <i class="fas fa-file-alt mr-2"></i>Exámenes
                     </a>
                 </div>
@@ -62,19 +62,19 @@
 
         <!-- Menú móvil -->
         <div id="mobile-menu" class="hidden md:hidden bg-indigo-700 pb-4">
-            <a href="/dashboard" class="block px-4 py-2 hover:bg-indigo-800">
+            <a href="/dashboard" class="nav-link block px-4 py-2 hover:bg-indigo-800">
                 <i class="fas fa-chart-line mr-2"></i>Dashboard
             </a>
-            <a href="/scan" class="block px-4 py-2 hover:bg-indigo-800">
+            <a href="/scan" class="nav-link block px-4 py-2 hover:bg-indigo-800">
                 <i class="fas fa-camera mr-2"></i>Escanear
             </a>
-            <a href="/templates" class="block px-4 py-2 hover:bg-indigo-800">
+            <a href="/templates" class="nav-link block px-4 py-2 hover:bg-indigo-800">
                 <i class="fas fa-clipboard-list mr-2"></i>Plantillas
             </a>
-            <a href="/secciones" class="block px-4 py-2 hover:bg-indigo-800">
+            <a href="/secciones" class="nav-link block px-4 py-2 hover:bg-indigo-800">
                 <i class="fas fa-users mr-2"></i>Secciones
             </a>
-            <a href="/exams" class="block px-4 py-2 hover:bg-indigo-800">
+            <a href="/exams" class="nav-link block px-4 py-2 hover:bg-indigo-800">
                 <i class="fas fa-file-alt mr-2"></i>Exámenes
             </a>
         </div>
@@ -88,14 +88,35 @@
     <!-- Footer -->
     <footer class="bg-gray-800 text-gray-400 py-6 mt-12">
         <div class="container mx-auto px-4 text-center">
-            <p>&copy; 2024 GradeScanner - Sistema de Revisión de Notas</p>
-            <p class="text-sm mt-2">Desarrollado para optimizar la corrección de exámenes</p>
+            <p>&copy; <span id="footer-year"></span> GradeScanner &mdash; Sistema de Evaluación para Bachillerato</p>
+            <p class="text-sm mt-2">Revisión de exámenes potenciada por OCR e IA</p>
         </div>
     </footer>
 
     <!-- Scripts principales -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+    <script>
+        // Año dinámico en footer
+        document.getElementById('footer-year').textContent = new Date().getFullYear();
+
+        // Resaltar página activa en el nav
+        const currentPath = window.location.pathname;
+        document.querySelectorAll('.nav-link').forEach(link => {
+            const href = link.getAttribute('href');
+            if (href && href !== '/' && currentPath.startsWith(href)) {
+                link.classList.add('bg-indigo-800', 'font-semibold');
+            } else if (href === '/' && currentPath === '/') {
+                link.classList.add('bg-indigo-800', 'font-semibold');
+            }
+        });
+
+        // Menú móvil toggle
+        document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+            document.getElementById('mobile-menu').classList.toggle('hidden');
+        });
+    </script>
 
     {% block extra_js %}{% endblock %}
 
@@ -109,4 +130,4 @@
     </script>
 </body>
 
-</html>
+</html>

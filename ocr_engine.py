@@ -1,6 +1,6 @@
 """
 GradeScanner - OCR Engine
-Motor de reconocimiento óptico de caracteres para escaneo de exámenes
+Motor de reconocimiento óptico de caracteres para exámenes
 Soporta opción múltiple y opción libre (respuesta abierta)
 """
 
@@ -13,91 +13,257 @@ from PIL import Image
 import pytesseract
 from datetime import datetime
 
-# Configuración de Tesseract (ajusta la ruta si es necesario en Windows)
-# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# ============================================================
+# AUTO-DETECCIÓN DE TESSERACT EN WINDOWS
+# ============================================================
+def _find_tesseract():
+    """Busca tesseract.exe en rutas comunes de Windows."""
+    candidatos = [
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+        os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs', 'Tesseract-OCR', 'tesseract.exe'),
+        os.path.join(os.environ.get('APPDATA', ''), 'Tesseract-OCR', 'tesseract.exe'),
+    ]
+    for ruta in candidatos:
+        if os.path.isfile(ruta):
+            return ruta
+    # Intentar encontrarlo en PATH
+    import shutil
+    found = shutil.which('tesseract')
+    if found:
+        return found
+    return None
+
+TESSERACT_PATH = _find_tesseract()
+if TESSERACT_PATH:
+    pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+    print(f"[OCR] Tesseract encontrado: {TESSERACT_PATH}")
+else:
+    print("[OCR] ADVERTENCIA: Tesseract no encontrado. Descárgalo de:")
+    print("      https://github.com/UB-Mannheim/tesseract/releases")
+    print("      Instala en: C:\\Program Files\\Tesseract-OCR\\")
+    print("      Asegúrate de marcar 'Spanish' durante la instalación.")
+
+TESSERACT_DISPONIBLE = TESSERACT_PATH is not None
 
 class OCREngine:
     """Motor OCR para reconocimiento de texto en imágenes de exámenes"""
     
+    # ---- Configuraciones de Tesseract a probar (de mayor a menor agresividad) ----
+    OCR_CONFIGS = [
+        r'--oem 1 --psm 4',   # LSTM, bloque de texto multi-línea (mejor para redacción libre)
+        r'--oem 1 --psm 6',   # LSTM, bloque uniforme (bueno para exámenes estructurados)
+        r'--oem 1 --psm 3',   # LSTM, detección automática de página
+        r'--oem 3 --psm 4',   # Combinado + bloque de texto
+    ]
+
     def __init__(self, config=None):
         self.config = config or {}
-        # Configuración de Tesseract
-        # --oem 1 usa Neural Nets LSTM, --psm 4 asume una sola columna de texto de tamaños variables
         self.custom_config = r'--oem 1 --psm 4'
         self.languages = self.config.get('languages', 'spa+eng')
-    
+        self._tesseract_ok = TESSERACT_DISPONIBLE
+
+    def check_tesseract(self):
+        """Verifica disponibilidad de Tesseract y retorna estado."""
+        if not self._tesseract_ok:
+            return {
+                'disponible': False,
+                'mensaje': 'Tesseract OCR no está instalado. Descárgalo de https://github.com/UB-Mannheim/tesseract/releases e instálalo marcando el idioma "Spanish".',
+                'ruta': None
+            }
+        try:
+            version = pytesseract.get_tesseract_version()
+            langs = pytesseract.get_languages()
+            tiene_spa = 'spa' in langs
+            return {
+                'disponible': True,
+                'version': str(version),
+                'idiomas': langs,
+                'tiene_espanol': tiene_spa,
+                'ruta': TESSERACT_PATH,
+                'mensaje': f'Tesseract {version} OK. Español: {"sí" if tiene_spa else "NO - instala spa.traineddata"}'
+            }
+        except Exception as e:
+            return {
+                'disponible': False,
+                'mensaje': str(e),
+                'ruta': TESSERACT_PATH
+            }
+
+    def _order_points(self, pts):
+        """Ordena 4 puntos: top-left, top-right, bottom-right, bottom-left."""
+        rect = np.zeros((4, 2), dtype='float32')
+        s = pts.sum(axis=1)
+        rect[0] = pts[np.argmin(s)]
+        rect[2] = pts[np.argmax(s)]
+        diff = np.diff(pts, axis=1)
+        rect[1] = pts[np.argmin(diff)]
+        rect[3] = pts[np.argmax(diff)]
+        return rect
+
+    def _four_point_transform(self, image, pts):
+        """Aplica perspectiva (bird-eye view) recortando al rectángulo del papel."""
+        rect = self._order_points(pts)
+        (tl, tr, br, bl) = rect
+        widthA = np.linalg.norm(br - bl)
+        widthB = np.linalg.norm(tr - tl)
+        maxW = max(int(widthA), int(widthB))
+        heightA = np.linalg.norm(tr - br)
+        heightB = np.linalg.norm(tl - bl)
+        maxH = max(int(heightA), int(heightB))
+        dst = np.array([[0,0],[maxW-1,0],[maxW-1,maxH-1],[0,maxH-1]], dtype='float32')
+        M = cv2.getPerspectiveTransform(rect, dst)
+        return cv2.warpPerspective(image, M, (maxW, maxH))
+
+    def _detect_and_crop_paper(self, img):
+        """Detecta el contorno del papel en el fondo y lo recorta/endereza."""
+        orig_h, orig_w = img.shape[:2]
+        # Redimensionar para detección rápida
+        scale = 800 / max(orig_h, orig_w)
+        small = cv2.resize(img, None, fx=scale, fy=scale)
+
+        gray_s = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        blur_s = cv2.GaussianBlur(gray_s, (5, 5), 0)
+        edged = cv2.Canny(blur_s, 50, 200)
+        edged = cv2.dilate(edged, np.ones((3,3), np.uint8), iterations=2)
+
+        cnts, _ = cv2.findContours(edged, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:6]
+
+        paper_pts = None
+        for c in cnts:
+            peri = cv2.arcLength(c, True)
+            approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+            if len(approx) == 4 and cv2.contourArea(approx) > (orig_h * orig_w * scale**2 * 0.15):
+                paper_pts = approx.reshape(4, 2) / scale
+                break
+
+        if paper_pts is not None:
+            return self._four_point_transform(img, paper_pts)
+        return img  # Si no detecta papel, devuelve original
+
+    def _deskew(self, gray):
+        """Detecta y corrige la inclinación del texto (hasta ±45°)."""
+        coords = np.column_stack(np.where(gray < 128))
+        if len(coords) < 10:
+            return gray
+        angle = cv2.minAreaRect(coords.astype(np.float32))[-1]
+        if angle < -45:
+            angle = 90 + angle
+        elif angle > 45:
+            angle = angle - 90
+        if abs(angle) < 0.3:
+            return gray  # Prácticamente derecho, no tocar
+        (h, w) = gray.shape
+        center = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+        return cv2.warpAffine(gray, M, (w, h), flags=cv2.INTER_CUBIC,
+                              borderMode=cv2.BORDER_REPLICATE)
+
     def preprocess_image(self, image_path):
-        """Preprocesa la imagen para mejorar la lectura de letra a mano/fea"""
-        # Leer imagen
+        """Pipeline completo de preprocesamiento para OCR robusto.
+        
+        Pasos:
+        1. Detección y recorte del papel (no importa si está descentrado).
+        2. Escala ×2 para resolución alta.
+        3. Normalización de iluminación con CLAHE.
+        4. Filtro bilateral (quita ruido, conserva bordes de letra).
+        5. Corrección automática de inclinación (deskew).
+        6. Binarización adaptativa.
+        7. Erosión leve para afinar trazos.
+        """
         img = cv2.imread(image_path)
         if img is None:
             raise ValueError(f"No se pudo cargar la imagen: {image_path}")
-        
-        # 1. Redimensionar para mayor resolución (ayuda mucho a Tesseract con la letra fea)
+
+        # 1. Recortar el papel del fondo (funciona aunque esté inclinado/descentrado)
+        img = self._detect_and_crop_paper(img)
+
+        # 2. Escalar ×2 para mayor detalle
         img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-        
-        # 2. Convertir a escala de grises
+
+        # 3. Escala de grises
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        # 3. Eliminar sombras e iluminación desigual usando un filtro de top-hat o CLAHE
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+
+        # 4. CLAHE (normaliza iluminación: sombras de mano, flash, etc.)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
         gray = clahe.apply(gray)
-        
-        # 4. Reducción ligera de ruido conservando bordes (Bilateral Filter)
+
+        # 5. Filtro bilateral (suaviza ruido sin destruir bordes de letras)
         blur = cv2.bilateralFilter(gray, 9, 75, 75)
-        
-        # 5. Binarización adaptativa inteligente (ideal para tinta vs papel irregular)
+
+        # 6. Deskew: corrige texto inclinado hasta ±45°
+        blur = self._deskew(blur)
+
+        # 7. Binarización adaptativa
         thresh = cv2.adaptiveThreshold(
-            blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+            blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY, 31, 15
         )
-        
-        # Opcional: Filtro de máscara para engrosar un poco los bordes de letras de bolígrafo débiles
+
+        # 8. Erosión leve para afinar trazos de bolígrafo débil
         kernel = np.ones((2, 2), np.uint8)
         processed = cv2.erode(thresh, kernel, iterations=1)
-        
+
         return img, gray, blur, thresh, processed
-    
+
+    def _best_ocr(self, img_pil):
+        """Prueba varias configuraciones de Tesseract y devuelve el resultado con más texto."""
+        best_text = ""
+        best_words = 0
+        for cfg in self.OCR_CONFIGS:
+            try:
+                t = pytesseract.image_to_string(img_pil, lang=self.languages, config=cfg).strip()
+                words = len(t.split())
+                if words > best_words:
+                    best_text = t
+                    best_words = words
+            except Exception:
+                continue
+        return best_text
+
     def extract_text(self, image_path, preprocess=True):
-        """Extrae texto de una imagen"""
+        """Extrae texto de una imagen usando el mejor resultado entre varias configuraciones."""
         try:
             if preprocess:
-                # Usar imagen preprocesada con filtro para letra fea
                 _, _, _, _, processed = self.preprocess_image(image_path)
-                
-                # Como binarizamos modo normal (texto negro fondo blanco),
-                # no necesitamos revertir colores antes de enviar a Tesseract.
                 img_pil = Image.fromarray(processed)
             else:
                 img_pil = Image.open(image_path)
-            
-            # Extraer texto con Tesseract usando LSTM y PSM optimizado
-            text = pytesseract.image_to_string(
-                img_pil, 
-                lang=self.languages,
-                config=self.custom_config
-            )
-            
-            return text.strip()
+            return self._best_ocr(img_pil)
         except Exception as e:
             print(f"Error en OCR: {str(e)}")
             return ""
-    
+
     def extract_text_with_confidence(self, image_path):
-        """Extrae texto con información de confianza"""
+        """Extrae texto con información de confianza usando la mejor versión de la imagen."""
         try:
-            # Usar la imagen preprocesada optimizada en lugar de la cruda
             _, _, _, _, processed = self.preprocess_image(image_path)
             img_pil = Image.fromarray(processed)
-            
-            # Obtener datos OCR con confianza
+
+            # Usar la config con más texto para el análisis detallado
+            best_config = self.custom_config
+            best_words = 0
+            best_text_raw = ""
+            for cfg in self.OCR_CONFIGS:
+                try:
+                    t = pytesseract.image_to_string(img_pil, lang=self.languages, config=cfg).strip()
+                    w = len(t.split())
+                    if w > best_words:
+                        best_words = w
+                        best_text_raw = t
+                        best_config = cfg
+                except Exception:
+                    continue
+
+            # Obtener datos de confianza con la mejor config
             data = pytesseract.image_to_data(
-                img_pil, 
+                img_pil,
                 lang=self.languages,
-                config=self.custom_config,
+                config=best_config,
                 output_type=pytesseract.Output.DICT
             )
-            
+
             text_parts = []
             confidences = []
             
@@ -108,13 +274,16 @@ class OCREngine:
                     if conf > 0:
                         confidences.append(conf)
             
-            full_text = ' '.join(text_parts)
+            token_text = ' '.join(text_parts)
             avg_confidence = sum(confidences) / len(confidences) if confidences else 0
             
+            # Usar el texto con más palabras entre el de tokens y el de _best_ocr
+            final_text = best_text_raw if len(best_text_raw.split()) >= len(token_text.split()) else token_text
+            
             return {
-                'text': full_text,
+                'text': final_text,
                 'confidence': avg_confidence,
-                'words': len(text_parts)
+                'words': len(final_text.split())
             }
         except Exception as e:
             print(f"Error en OCR con confianza: {str(e)}")
