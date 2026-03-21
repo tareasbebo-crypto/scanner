@@ -118,18 +118,31 @@
                             </div>
                         </div>
 
-                        <!-- Vista JSON -->
-                        <div>
-                            <button type="button" onclick="toggleJsonView()"
-                                class="text-sm text-indigo-600 hover:text-indigo-800">
-                                <i class="fas fa-code mr-1"></i>Ver/editar JSON
-                            </button>
-                            <div id="json-view" class="hidden mt-2">
-                                <textarea id="tpl-respuestas" class="w-full p-3 border rounded-lg font-mono text-sm"
-                                    rows="8"></textarea>
+                    </div> <!-- config-examen fin -->
+                    
+                    <!-- Configuración del examen Libre -->
+                    <div id="config-libre" class="hidden">
+                        <div class="bg-blue-50 p-4 rounded-lg mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Preguntas Abiertas y Palabras Clave</label>
+                            <p class="text-xs text-gray-500 mb-3">
+                                Enumera las preguntas. Por cada una, escribe las <strong>palabras clave</strong> separadas por comas que deben estar presentes en el texto del alumno para valer como correctas.
+                            </p>
+                            
+                            <div class="flex text-xs font-semibold text-gray-500 mb-1 px-8">
+                                <span class="flex-1">Palabras Clave (Ej: mitocondria, energía, célula)</span>
+                                <span class="w-16 text-center">Puntos</span>
                             </div>
+                            
+                            <div id="preguntas-libre-container" class="space-y-2 mb-3">
+                                <!-- Filas agregadas por JS -->
+                            </div>
+                            
+                            <button type="button" onclick="agregarPreguntaLibre()" class="text-sm px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 mt-2 font-medium">
+                                <i class="fas fa-plus mr-1"></i> Añadir pregunta
+                            </button>
                         </div>
                     </div>
+
                     <div class="flex justify-end space-x-3 mt-6">
                         <button type="button" onclick="closeModal()"
                             class="px-6 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
@@ -269,19 +282,6 @@
 
     function closeModal() {
         document.getElementById('template-modal').classList.add('hidden');
-        document.getElementById('json-view').classList.add('hidden');
-    }
-
-    function toggleJsonView() {
-        const jsonView = document.getElementById('json-view');
-        const isHidden = jsonView.classList.contains('hidden');
-
-        if (isHidden) {
-            actualizarJsonDesdeHelper();
-            jsonView.classList.remove('hidden');
-        } else {
-            jsonView.classList.add('hidden');
-        }
     }
 
     function actualizarOpciones() {
@@ -335,19 +335,34 @@
     }
 
     function actualizarJsonDesdeHelper() {
-        const respuestas = [];
-        for (let i = 1; i <= numPreguntas; i++) {
-            const radio = document.querySelector(`.respuesta-radio[name="preg_${i}"]:checked`);
-            const puntos = document.querySelector(`.puntos-input[data-pregunta="${i}"]`);
-            if (radio && puntos) {
-                respuestas.push({
-                    pregunta: i,
-                    respuesta: radio.value,
-                    puntos: parseFloat(puntos.value) || 1
-                });
-            }
-        }
-        document.getElementById('tpl-respuestas').value = JSON.stringify(respuestas, null, 2);
+        // Obsoleto, ya no se usa JSON manual, se recolecta al guardar.
+    }
+
+    function agregarPreguntaLibre() {
+        const num = document.getElementById('preguntas-libre-container').children.length + 1;
+        const div = document.createElement('div');
+        div.className = 'flex items-start space-x-2 bg-white p-2 rounded border border-gray-200 relative pregunta-libre-fila shadow-sm';
+        div.innerHTML = `
+            <span class="font-bold text-gray-400 mt-2 ml-1 w-6 num-pregunta">${num}.</span>
+            <div class="flex-1">
+                <input type="text" class="w-full p-2 border rounded-lg text-sm pc-input" placeholder="Ej: Fotosíntesis, clorofila, luz solar" required>
+            </div>
+            <div class="w-20">
+                <input type="number" class="w-full p-2 border rounded-lg text-sm pts-input" value="2" min="0.5" step="0.5" required>
+            </div>
+            <button type="button" onclick="this.closest('.pregunta-libre-fila').remove(); actualizarNumerosLibre();" class="text-red-400 hover:text-red-600 mt-2 px-1">
+                <i class="fas fa-trash"></i>
+            </button>
+        `;
+        document.getElementById('preguntas-libre-container').appendChild(div);
+        actualizarNumerosLibre();
+    }
+
+    function actualizarNumerosLibre() {
+        const filas = document.querySelectorAll('.pregunta-libre-fila');
+        filas.forEach((fila, idx) => {
+            fila.querySelector('.num-pregunta').textContent = `${idx + 1}.`;
+        });
     }
 
     async function saveTemplate(e) {
@@ -358,16 +373,19 @@
 
         if (tipoExamen === 'multiple_choice') {
             // Multiple choice
-            let respuestas;
-            try {
-                const jsonText = document.getElementById('tpl-respuestas').value;
-                if (!jsonText.trim()) {
-                    actualizarJsonDesdeHelper();
+            let respuestas = [];
+            const numPreguntas = parseInt(document.getElementById('tpl-num-preguntas').value) || 10;
+            
+            for (let i = 1; i <= numPreguntas; i++) {
+                const radio = document.querySelector(`.respuesta-radio[name="preg_${i}"]:checked`);
+                const puntos = document.querySelector(`.puntos-input[data-pregunta="${i}"]`);
+                if (radio && puntos) {
+                    respuestas.push({
+                        pregunta: i,
+                        respuesta: radio.value,
+                        puntos: parseFloat(puntos.value) || 1
+                    });
                 }
-                respuestas = JSON.parse(document.getElementById('tpl-respuestas').value || '[]');
-            } catch {
-                Swal.fire('Error', 'El formato JSON de respuestas es inválido', 'error');
-                return;
             }
 
             if (respuestas.length === 0) {
@@ -384,22 +402,30 @@
                 puntaje_total: respuestas.reduce((a, r) => a + (r.puntos || 1), 0)
             };
         } else {
-            // Free response - get from JSON
-            let preguntas;
-            try {
-                const jsonText = document.getElementById('tpl-respuestas').value;
-                if (!jsonText.trim()) {
-                    Swal.fire('Error', 'Debes agregar las preguntas de respuesta libre', 'error');
-                    return;
-                }
-                preguntas = JSON.parse(jsonText);
-            } catch {
-                Swal.fire('Error', 'El formato JSON de preguntas es inválido', 'error');
+            // Free response 
+            const filas = document.querySelectorAll('.pregunta-libre-fila');
+            if (filas.length === 0) {
+                Swal.fire('Error', 'Debes agregar al menos una pregunta abierta', 'error');
                 return;
             }
 
-            if (preguntas.length === 0) {
-                Swal.fire('Error', 'Debes agregar al menos una pregunta', 'error');
+            let preguntasLibres = [];
+            let isValid = true;
+            filas.forEach((fila, idx) => {
+                const pc = fila.querySelector('.pc-input').value.trim();
+                const pts = parseFloat(fila.querySelector('.pts-input').value) || 1;
+                
+                if (!pc) isValid = false;
+                
+                preguntasLibres.push({
+                    pregunta: idx + 1,
+                    palabras_clave: pc.split(',').map(s => s.trim()).filter(s => s),
+                    puntos: pts
+                });
+            });
+
+            if (!isValid) {
+                Swal.fire('Error', 'Debes introducir palabras clave en todas las filas', 'error');
                 return;
             }
 
@@ -408,8 +434,8 @@
                 seccion_id: parseInt(document.getElementById('tpl-seccion').value) || null,
                 descripcion: document.getElementById('tpl-descripcion').value,
                 tipo_examen: 'free_response',
-                preguntas_texto: preguntas,
-                puntaje_total: preguntas.reduce((a, r) => a + (r.puntos || 1), 0)
+                preguntas_texto: preguntasLibres,
+                puntaje_total: preguntasLibres.reduce((a, r) => a + (r.puntos || 1), 0)
             };
         }
 
@@ -427,12 +453,23 @@
     function cambiarTipoPlantilla() {
         const tipo = document.querySelector('input[name="tipo_examen"]:checked').value;
         const configSection = document.getElementById('config-examen');
-        const respuestasSection = document.getElementById('respuestas-section');
+        const libreSection = document.getElementById('config-libre');
+
+        if (tipo === 'multiple_choice') {
+            configSection.classList.remove('hidden');
+            libreSection.classList.add('hidden');
+        } else {
+            configSection.classList.add('hidden');
+            libreSection.classList.remove('hidden');
+            if (document.getElementById('preguntas-libre-container').children.length === 0) {
+                agregarPreguntaLibre();
+            }
+        }
 
         // Update label styling
-        const labels = document.querySelectorAll('input[name="tipo_examen"]').closest('label');
-        labels.forEach(label => {
-            if (label.querySelector('input').value === tipo) {
+        const labels = document.querySelectorAll('input[name="tipo_examen"]').forEach(input => {
+            const label = input.closest('label');
+            if (input.value === tipo) {
                 label.classList.add('border-indigo-500', 'bg-indigo-50');
                 label.classList.remove('border-gray-200');
             } else {
