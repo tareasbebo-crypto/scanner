@@ -27,10 +27,12 @@ def init_app(app):
     
     if not db_uri or db_uri == 'sqlite:///':
         # Error: No hay base de datos configurada
-        print("ERROR: No se ha configurado la base de datos!")
+        print(f"ERROR: No se ha configurado la base de datos! (URI detectada: '{db_uri}')")
+        print(f"Entorno: {os.environ.get('FLASK_ENV', 'N/A')}")
+        print(f"DATABASE_URL presente en ENV: {bool(os.environ.get('DATABASE_URL'))}")
         print("Para SQLite local: USE_SUPABASE=false")
         print("Para Supabase: USE_SUPABASE=true y DATABASE_URL=[tu-url]")
-        raise ValueError("DATABASE_URL no configurada")
+        raise ValueError(f"DATABASE_URL no configurada correctamente (URI: '{db_uri}')")
     
     app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
