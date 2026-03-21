@@ -272,8 +272,9 @@ def scan_examen():
                 if plantilla:
                     tipo_examen = plantilla.tipo_examen
             
-            # Procesar imagen
-            result = ocr_engine.extract_text_with_confidence(filepath)
+            # Procesar imagen con whitelist si es multiple choice
+            whitelist = "ABCDEVF0123456789.:) " if tipo_examen == 'multiple_choice' else None
+            result = ocr_engine.extract_text_with_confidence(filepath, whitelist)
             
             # Extraer respuestas según el tipo de plantilla
             if tipo_examen == 'multiple_choice':

@@ -32,20 +32,34 @@ def _find_tesseract():
         r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
         os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs', 'Tesseract-OCR', 'tesseract.exe'),
         os.path.join(os.environ.get('APPDATA', ''), 'Tesseract-OCR', 'tesseract.exe'),
+        r'C:\Tesseract-OCR\tesseract.exe'  # Ruta alternativa común
     ]
     for ruta in candidatos:
         if os.path.isfile(ruta):
             return ruta
     
     import shutil
-    return shutil.which('tesseract')
+    found = shutil.which('tesseract')
+    if found:
+        return found
+        
+    # Último intento: buscar en el PATH del sistema directamente
+    try:
+        from subprocess import check_output
+        output = check_output(['where', 'tesseract']).decode('utf-8').strip().split('\n')[0]
+        if os.path.isfile(output):
+            return output
+    except:
+        pass
+        
+    return None
 
 TESSERACT_PATH = _find_tesseract()
 if TESSERACT_PATH:
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
     print(f"[OCR] Tesseract configurado en: {TESSERACT_PATH}")
 else:
-    print("[OCR] ADVERTENCIA: No se encontró Tesseract en el sistema.")
+    print("[OCR] ADVERTENCIA: Tesseract no encontrado. El OCR fallará.")
 
 TESSERACT_DISPONIBLE = TESSERACT_PATH is not None
 
@@ -54,10 +68,11 @@ class OCREngine:
     
     # ---- Configuraciones de Tesseract a probar (de mayor a menor agresividad) ----
     OCR_CONFIGS = [
-        r'--oem 1 --psm 4',   # LSTM, bloque de texto multi-línea (mejor para redacción libre)
         r'--oem 1 --psm 6',   # LSTM, bloque uniforme (bueno para exámenes estructurados)
+        r'--oem 1 --psm 4',   # LSTM, bloque de texto multi-línea (mejor para redacción libre)
+        r'--oem 1 --psm 11',  # Texto disperso (CRUCIAL para hojas de burbujas/OMR)
         r'--oem 1 --psm 3',   # LSTM, detección automática de página
-        r'--oem 3 --psm 4',   # Combinado + bloque de texto
+        r'--oem 3 --psm 6',   # Motores combinados
     ]
 
     def __init__(self, config=None):
@@ -210,21 +225,28 @@ class OCREngine:
 
         return img, gray, blur, thresh, processed
 
-    def _run_ocr_and_confidence(self, img_pil):
+    def _run_ocr_and_confidence(self, img_pil, whitelist=None):
         """Ejecuta Tesseract con una estrategia de reintentos agresiva."""
+        if not TESSERACT_DISPONIBLE:
+            return {'text': '', 'confidence': 0, 'words': 0}
+            
         best_text = ""
         best_words = 0
         best_cfg = self.OCR_CONFIGS[0]
         
-        # Estrategia de idiomas a probar (priorizamos español)
-        langs_to_try = [self.languages, 'spa', 'eng', 'spa+eng']
-        # Configuraciones de PSM a probar (3 y 4 son las más útiles)
-        psms = ['3', '4', '6']
+        # Configuración extra opcional (whitelist)
+        extra_cfg = ""
+        if whitelist:
+            extra_cfg = f"-c tessedit_char_whitelist={whitelist}"
+            
+        # Estrategia de idiomas y PSMs a probar
+        langs_to_try = [self.languages, 'spa', 'spa+eng', 'eng']
+        psms = ['6', '11', '4', '3']
         
         for lang in langs_to_try:
-            if best_words > 40: break
+            if best_words > 50: break
             for psm in psms:
-                cfg = f'--oem 1 --psm {psm}'
+                cfg = f'--oem 1 --psm {psm} {extra_cfg}'.strip()
                 try:
                     t = pytesseract.image_to_string(img_pil, lang=lang, config=cfg).strip()
                     w = len(t.split())
@@ -232,7 +254,9 @@ class OCREngine:
                         best_words = w
                         best_text = t
                         best_cfg = cfg
-                except Exception:
+                        if best_words > 30: break
+                except Exception as e:
+                    print(f"[OCR] Error con PSM {psm}: {str(e)}")
                     continue
         
         # Calcular confianza final
@@ -246,29 +270,60 @@ class OCREngine:
             
         return {'text': best_text.strip(), 'confidence': avg_conf, 'words': best_words}
 
-    def extract_text_with_confidence(self, image_path):
+    def extract_text_with_confidence(self, image_path, whitelist=None):
         """Extrae texto con múltiples intentos de preprocesamiento."""
         if not os.path.exists(image_path):
             return {'text': '', 'confidence': 0, 'words': 0}
 
-        try:
-            # MÉTODO 1: Imagen Original (A veces el preprocesado arruina letras finas)
-            img_orig = Image.open(image_path).convert('L')
-            result_orig = self._run_ocr_and_confidence(img_orig)
+        if not TESSERACT_DISPONIBLE:
+            print("[OCR] Fallo: Tesseract no disponible.")
+            return {'text': '', 'confidence': 0, 'words': 0}
 
-            # Si ya tenemos buen texto, no hace falta más
+        try:
+            # MÉTODO 1: Imagen Original
+            img_orig = Image.open(image_path).convert('L')
+            result_orig = self._run_ocr_and_confidence(img_orig, whitelist)
+            print(f"[OCR] Intento 1 (Original): {result_orig['words']} palabras")
+
+            # Si ya tenemos muy buen texto, no hace falta más
+            if result_orig['words'] > 40:
+                return result_orig
+
+            # MÉTODO 2: Imagen Procesada (Binarizada con Erosión)
+            try:
+                raw_img = cv2.imread(image_path)
+                # Recorte de papel
+                paper = self._detect_and_crop_paper(raw_img)
+                # Escalar x2
+                paper_scaled = cv2.resize(paper, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+                gray = cv2.cvtColor(paper_scaled, cv2.COLOR_BGR2GRAY)
+                # Binarización
+                thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 15)
+                # Erosión (el método original)
+                kernel = np.ones((2, 2), np.uint8)
+                processed = cv2.erode(thresh, kernel, iterations=1)
+                
+                img_proc = Image.fromarray(processed)
+                result_proc = self._run_ocr_and_confidence(img_proc, whitelist)
+                print(f"[OCR] Intento 2 (Binarizado + Erosión): {result_proc['words']} palabras")
+                
+                if result_proc['words'] > result_orig['words']:
+                    result_orig = result_proc
+            except Exception as e:
+                print(f"[OCR] Error en intento 2: {str(e)}")
+
             if result_orig['words'] > 30:
                 return result_orig
 
-            # MÉTODO 2: Imagen Preprocesada (Recorte y binarización)
+            # MÉTODO 3: Binarizada SIN Erosión (mejor para fuentes delgadas)
             try:
-                _, _, _, _, processed = self.preprocess_image(image_path)
-                img_proc = Image.fromarray(processed)
-                result_proc = self._run_ocr_and_confidence(img_proc)
+                # Usamos thresh del paso anterior (si falló por la erosión)
+                img_no_erode = Image.fromarray(thresh)
+                result_no_erode = self._run_ocr_and_confidence(img_no_erode, whitelist)
+                print(f"[OCR] Intento 3 (Sin Erosión): {result_no_erode['words']} palabras")
                 
-                # Devolver el mejor de los dos
-                if result_proc['words'] > result_orig['words']:
-                    return result_proc
+                if result_no_erode['words'] > result_orig['words']:
+                    return result_no_erode
             except: pass
             
             return result_orig
