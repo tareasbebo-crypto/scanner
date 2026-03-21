@@ -22,49 +22,58 @@ class OCREngine:
     def __init__(self, config=None):
         self.config = config or {}
         # Configuración de Tesseract
-        self.custom_config = r'--oem 3 --psm 6'
+        # --oem 1 usa Neural Nets LSTM, --psm 4 asume una sola columna de texto de tamaños variables
+        self.custom_config = r'--oem 1 --psm 4'
         self.languages = self.config.get('languages', 'spa+eng')
     
     def preprocess_image(self, image_path):
-        """Preprocesa la imagen para mejorar el OCR"""
+        """Preprocesa la imagen para mejorar la lectura de letra a mano/fea"""
         # Leer imagen
         img = cv2.imread(image_path)
         if img is None:
             raise ValueError(f"No se pudo cargar la imagen: {image_path}")
         
-        # Convertir a escala de grises
+        # 1. Redimensionar para mayor resolución (ayuda mucho a Tesseract con la letra fea)
+        img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        
+        # 2. Convertir a escala de grises
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
-        # Aplicar desenfoque gaussiano para reducir ruido
-        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+        # 3. Eliminar sombras e iluminación desigual usando un filtro de top-hat o CLAHE
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        gray = clahe.apply(gray)
         
-        # Aplicar umbral adaptativo para binarizar
+        # 4. Reducción ligera de ruido conservando bordes (Bilateral Filter)
+        blur = cv2.bilateralFilter(gray, 9, 75, 75)
+        
+        # 5. Binarización adaptativa inteligente (ideal para tinta vs papel irregular)
         thresh = cv2.adaptiveThreshold(
             blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-            cv2.THRESH_BINARY_INV, 11, 2
+            cv2.THRESH_BINARY, 31, 15
         )
         
-        # Operaciones morfología para limpiar
-        kernel = np.ones((3, 3), np.uint8)
-        dilate = cv2.dilate(thresh, kernel, iterations=1)
+        # Opcional: Filtro de máscara para engrosar un poco los bordes de letras de bolígrafo débiles
+        kernel = np.ones((2, 2), np.uint8)
+        processed = cv2.erode(thresh, kernel, iterations=1)
         
-        return img, gray, blur, thresh, dilate
+        return img, gray, blur, thresh, processed
     
     def extract_text(self, image_path, preprocess=True):
         """Extrae texto de una imagen"""
         try:
             if preprocess:
-                # Usar imagen preprocesada
+                # Usar imagen preprocesada con filtro para letra fea
                 _, _, _, _, processed = self.preprocess_image(image_path)
-                # Convertir de vuelta a RGB para PIL
-                processed_rgb = cv2.cvtColor(processed, cv2.COLOR_GRAY2RGB)
-                img = Image.fromarray(processed_rgb)
+                
+                # Como binarizamos modo normal (texto negro fondo blanco),
+                # no necesitamos revertir colores antes de enviar a Tesseract.
+                img_pil = Image.fromarray(processed)
             else:
-                img = Image.open(image_path)
+                img_pil = Image.open(image_path)
             
-            # Extraer texto con Tesseract
+            # Extraer texto con Tesseract usando LSTM y PSM optimizado
             text = pytesseract.image_to_string(
-                img, 
+                img_pil, 
                 lang=self.languages,
                 config=self.custom_config
             )
@@ -77,11 +86,13 @@ class OCREngine:
     def extract_text_with_confidence(self, image_path):
         """Extrae texto con información de confianza"""
         try:
-            img = Image.open(image_path)
+            # Usar la imagen preprocesada optimizada en lugar de la cruda
+            _, _, _, _, processed = self.preprocess_image(image_path)
+            img_pil = Image.fromarray(processed)
             
             # Obtener datos OCR con confianza
             data = pytesseract.image_to_data(
-                img, 
+                img_pil, 
                 lang=self.languages,
                 config=self.custom_config,
                 output_type=pytesseract.Output.DICT
