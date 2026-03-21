@@ -44,16 +44,12 @@ class Plantilla(db.Model):
     descripcion = db.Column(db.Text)
     seccion_id = db.Column(db.Integer, db.ForeignKey('secciones.id'))
     
-    # Tipo de examen: 'multiple_choice' (opcion multiple) o 'free_response' (opcion libre)
-    tipo_examen = db.Column(db.String(20), default='multiple_choice')  # multiple_choice, free_response
+    # Tipo de examen: 'multiple_choice' (opcion multiple)
+    tipo_examen = db.Column(db.String(20), default='multiple_choice')  # multiple_choice
     
     # Para opción múltiple: respuestas correctas en formato JSON
     # [{"pregunta": 1, "respuesta": "A", "puntos": 2}, ...]
     respuestas_correctas = db.Column(db.Text)
-    
-    # Para opción libre: preguntas con respuesta esperada
-    # [{"pregunta": 1, "texto": "¿Qué es X?", "palabras_clave": ["definicion", "concepto"], "puntos": 5}, ...]
-    preguntas_texto = db.Column(db.Text)
     
     puntaje_total = db.Column(db.Float, default=10)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
@@ -71,7 +67,6 @@ class Plantilla(db.Model):
             'seccion_id': self.seccion_id,
             'tipo_examen': self.tipo_examen,
             'respuestas_correctas': self.respuestas_correctas,
-            'preguntas_texto': self.preguntas_texto,
             'puntaje_total': self.puntaje_total,
             'activa': self.activa,
             'fecha_creacion': self.fecha_creacion.isoformat() if self.fecha_creacion else None,
@@ -136,17 +131,12 @@ class Pregunta(db.Model):
     
     numero = db.Column(db.Integer, nullable=False)
     
-    # Tipo de pregunta: 'multiple_choice' o 'free_response'
+    # Tipo de pregunta: 'multiple_choice'
     tipo = db.Column(db.String(20), default='multiple_choice')
     
     # Para opción múltiple
     respuesta_estudiante = db.Column(db.String(10))  # Respuesta del estudiante (A, B, C, D)
     respuesta_correcta = db.Column(db.String(10))    # Respuesta correcta
-    
-    # Para opción libre
-    respuesta_texto = db.Column(db.Text)             # Respuesta completa del estudiante
-    respuesta_esperada = db.Column(db.Text)          # Palabras clave o respuesta modelo
-    coincidencias = db.Column(db.Float)              # Porcentaje de coincidencia
     
     # Puntuación
     puntos = db.Column(db.Float, default=0)
@@ -161,9 +151,6 @@ class Pregunta(db.Model):
             'tipo': self.tipo,
             'respuesta_estudiante': self.respuesta_estudiante,
             'respuesta_correcta': self.respuesta_correcta,
-            'respuesta_texto': self.respuesta_texto,
-            'respuesta_esperada': self.respuesta_esperada,
-            'coincidencias': self.coincidencias,
             'puntos': self.puntos,
             'puntos_obtenidos': self.puntos_obtenidos
         }

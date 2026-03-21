@@ -11,17 +11,8 @@ gunicorn==21.2.0
 Flask-SQLAlchemy==3.1.1
 psycopg2-binary>=2.9.11
 
-# OCR
-pytesseract==0.3.10
-Pillow==10.1.0
-
-# Image Processing  
-opencv-python-headless==4.8.1.78
-numpy==1.26.2
-
-# Excel & PDF Export
-xlsxwriter==3.2.0
-reportlab==4.2.0
+# OCR - Solo Pillow necesario (Tesseract no se usa en cloud)
+Pillow>=10.0.0
 
 # Environment Variables
 python-dotenv==1.1.0

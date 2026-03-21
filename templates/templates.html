@@ -59,23 +59,8 @@
 
                     <!-- Tipo de examen -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Tipo de Examen</label>
-                        <div class="grid grid-cols-2 gap-4">
-                            <label class="border-2 border-indigo-500 rounded-lg p-3 cursor-pointer bg-indigo-50">
-                                <input type="radio" name="tipo_examen" value="multiple_choice" checked
-                                    onchange="cambiarTipoPlantilla()" class="mr-2">
-                                <i class="fas fa-check-circle text-indigo-600 mr-1"></i>
-                                <span class="font-medium">Opción Múltiple</span>
-                                <p class="text-xs text-gray-500 mt-1">Respuestas A, B, C, D...</p>
-                            </label>
-                            <label class="border-2 border-gray-200 rounded-lg p-3 cursor-pointer hover:bg-gray-50">
-                                <input type="radio" name="tipo_examen" value="free_response"
-                                    onchange="cambiarTipoPlantilla()" class="mr-2">
-                                <i class="fas fa-pen text-gray-600 mr-1"></i>
-                                <span class="font-medium">Opción Libre</span>
-                                <p class="text-xs text-gray-500 mt-1">Respuestas de texto abierto</p>
-                            </label>
-                        </div>
+                    <!-- Tipo de examen: Solo Opción Múltiple ahora -->
+                    <input type="hidden" name="tipo_examen" value="multiple_choice">
                     </div>
 
                     <!-- Configuración del examen (solo múltiple) -->
@@ -120,29 +105,7 @@
 
                     </div> <!-- config-examen fin -->
                     
-                    <!-- Configuración del examen Libre -->
-                    <div id="config-libre" class="hidden">
-                        <div class="bg-blue-50 p-4 rounded-lg mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Preguntas Abiertas y Palabras Clave</label>
-                            <p class="text-xs text-gray-500 mb-3 block">
-                                Enumera las preguntas. Escribe las <strong>palabras clave</strong> separadas por comas. <br/>
-                                <span class="text-indigo-600"><i class="fas fa-magic"></i> <strong>Tip Pro:</strong> El sistema perdona errores ortográficos automáticamente. Usa <code>|</code> para añadir sinónimos válidos (Ej. <code>Fotosíntesis | Alimentación</code>).</span>
-                            </p>
-                            
-                            <div class="flex text-xs font-semibold text-gray-500 mb-1 px-8">
-                                <span class="flex-1">Palabras Clave (Ej: mitocondria, energía | luz)</span>
-                                <span class="w-16 text-center">Puntos</span>
-                            </div>
-                            
-                            <div id="preguntas-libre-container" class="space-y-2 mb-3">
-                                <!-- Filas agregadas por JS -->
-                            </div>
-                            
-                            <button type="button" onclick="agregarPreguntaLibre()" class="text-sm px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 mt-2 font-medium">
-                                <i class="fas fa-plus mr-1"></i> Añadir pregunta
-                            </button>
-                        </div>
-                    </div>
+
 
                     <div class="flex justify-end space-x-3 mt-6">
                         <button type="button" onclick="closeModal()"
@@ -198,38 +161,27 @@
 
         grid.innerHTML = templates.map(t => {
             let respuestas = [];
-            let isFreeResponse = t.tipo_examen === 'free_response';
-            
             try {
-                respuestas = JSON.parse(isFreeResponse ? (t.preguntas_texto || '[]') : (t.respuestas_correctas || '[]'));
+                respuestas = JSON.parse(t.respuestas_correctas || '[]');
             } catch { }
 
-            // Determinar número de opciones
+            const opcionesUsadas = new Set(respuestas.map(r => r.respuesta));
             let opcionesHTML = '';
-            if (!isFreeResponse) {
-                const opcionesUsadas = new Set(respuestas.map(r => r.respuesta));
-                if (opcionesUsadas.has('V') || opcionesUsadas.has('F')) {
-                    opcionesHTML = `
-                    <div class="text-sm flex justify-between">
-                        <span class="text-gray-600">Opciones:</span>
-                        <span class="font-medium text-pink-600">Verdadero/Falso</span>
-                    </div>`;
-                } else {
-                    let numOpts = 4;
-                    if (opcionesUsadas.has('F') && !opcionesUsadas.has('V')) numOpts = 6;
-                    else if (opcionesUsadas.has('E')) numOpts = 5;
-                    else if (opcionesUsadas.has('D')) numOpts = 4;
-                    opcionesHTML = `
-                    <div class="text-sm flex justify-between">
-                        <span class="text-gray-600">Opciones:</span>
-                        <span class="font-medium">A-${OPCIONES[numOpts - 1]}</span>
-                    </div>`;
-                }
-            } else {
+            if (opcionesUsadas.has('V') || opcionesUsadas.has('F')) {
                 opcionesHTML = `
                 <div class="text-sm flex justify-between">
-                    <span class="text-gray-600">Tipo:</span>
-                    <span class="font-medium text-indigo-600">Texto libre</span>
+                    <span class="text-gray-600">Opciones:</span>
+                    <span class="font-medium text-pink-600">Verdadero/Falso</span>
+                </div>`;
+            } else {
+                let numOpts = 4;
+                if (opcionesUsadas.has('F') && !opcionesUsadas.has('V')) numOpts = 6;
+                else if (opcionesUsadas.has('E')) numOpts = 5;
+                else if (opcionesUsadas.has('D')) numOpts = 4;
+                opcionesHTML = `
+                <div class="text-sm flex justify-between">
+                    <span class="text-gray-600">Opciones:</span>
+                    <span class="font-medium">A-${OPCIONES[numOpts - 1]}</span>
                 </div>`;
             }
 
@@ -237,7 +189,7 @@
 
             return `
         <div class="bg-white rounded-xl shadow-lg p-6 relative overflow-hidden">
-            ${isFreeResponse ? '<div class="absolute top-0 right-0 w-2 h-full bg-blue-500"></div>' : '<div class="absolute top-0 right-0 w-2 h-full bg-indigo-500"></div>'}
+            <div class="absolute top-0 right-0 w-2 h-full bg-indigo-500"></div>
             <div class="flex justify-between items-start mb-3">
                 <h3 class="font-bold text-lg">${t.nombre}</h3>
                 <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">${respuestas.length} preg</span>
@@ -259,9 +211,7 @@
                     ${respuestas.slice(0, 5).map(r => `
                         <div class="text-xs border-b pb-1 mb-1">
                             <span class="font-medium">P${r.pregunta}:</span> 
-                            ${isFreeResponse 
-                                ? (Array.isArray(r.palabras_clave) ? r.palabras_clave.join(', ') : r.palabras_clave || 'Sin palabras clave') 
-                                : r.respuesta}
+                            ${r.respuesta}
                             <span class="text-gray-400 ml-1">(${r.puntos || 1} pts)</span>
                         </div>
                     `).join('')}
@@ -339,106 +289,38 @@
         // Obsoleto, ya no se usa JSON manual, se recolecta al guardar.
     }
 
-    function agregarPreguntaLibre() {
-        const num = document.getElementById('preguntas-libre-container').children.length + 1;
-        const div = document.createElement('div');
-        div.className = 'flex items-start space-x-2 bg-white p-2 rounded border border-gray-200 relative pregunta-libre-fila shadow-sm';
-        div.innerHTML = `
-            <span class="font-bold text-gray-400 mt-2 ml-1 w-6 num-pregunta">${num}.</span>
-            <div class="flex-1">
-                <input type="text" class="w-full p-2 border rounded-lg text-sm pc-input" placeholder="Ej: Fotosíntesis, clorofila, luz solar" required>
-            </div>
-            <div class="w-20">
-                <input type="number" class="w-full p-2 border rounded-lg text-sm pts-input" value="2" min="0.5" step="0.5" required>
-            </div>
-            <button type="button" onclick="this.closest('.pregunta-libre-fila').remove(); actualizarNumerosLibre();" class="text-red-400 hover:text-red-600 mt-2 px-1">
-                <i class="fas fa-trash"></i>
-            </button>
-        `;
-        document.getElementById('preguntas-libre-container').appendChild(div);
-        actualizarNumerosLibre();
-    }
-
-    function actualizarNumerosLibre() {
-        const filas = document.querySelectorAll('.pregunta-libre-fila');
-        filas.forEach((fila, idx) => {
-            fila.querySelector('.num-pregunta').textContent = `${idx + 1}.`;
-        });
-    }
-
     async function saveTemplate(e) {
         e.preventDefault();
 
-        const tipoExamen = document.querySelector('input[name="tipo_examen"]:checked').value;
-        let data;
-
-        if (tipoExamen === 'multiple_choice') {
-            // Multiple choice
-            let respuestas = [];
-            const numPreguntas = parseInt(document.getElementById('tpl-num-preguntas').value) || 10;
-            
-            for (let i = 1; i <= numPreguntas; i++) {
-                const radio = document.querySelector(`.respuesta-radio[name="preg_${i}"]:checked`);
-                const puntos = document.querySelector(`.puntos-input[data-pregunta="${i}"]`);
-                if (radio && puntos) {
-                    respuestas.push({
-                        pregunta: i,
-                        respuesta: radio.value,
-                        puntos: parseFloat(puntos.value) || 1
-                    });
-                }
-            }
-
-            if (respuestas.length === 0) {
-                Swal.fire('Error', 'Debes agregar al menos una respuesta correcta', 'error');
-                return;
-            }
-
-            data = {
-                nombre: document.getElementById('tpl-nombre').value,
-                seccion_id: parseInt(document.getElementById('tpl-seccion').value) || null,
-                descripcion: document.getElementById('tpl-descripcion').value,
-                tipo_examen: 'multiple_choice',
-                respuestas_correctas: respuestas,
-                puntaje_total: respuestas.reduce((a, r) => a + (r.puntos || 1), 0)
-            };
-        } else {
-            // Free response 
-            const filas = document.querySelectorAll('.pregunta-libre-fila');
-            if (filas.length === 0) {
-                Swal.fire('Error', 'Debes agregar al menos una pregunta abierta', 'error');
-                return;
-            }
-
-            let preguntasLibres = [];
-            let isValid = true;
-            filas.forEach((fila, idx) => {
-                const pc = fila.querySelector('.pc-input').value.trim();
-                const pts = parseFloat(fila.querySelector('.pts-input').value) || 1;
-                
-                if (!pc) isValid = false;
-                
-                preguntasLibres.push({
-                    pregunta: idx + 1,
-                    palabras_clave: pc.split(',').map(s => s.trim()).filter(s => s),
-                    puntos: pts
+        // Solo opción múltiple
+        let respuestas = [];
+        const numPreguntas = parseInt(document.getElementById('tpl-num-preguntas').value) || 10;
+        
+        for (let i = 1; i <= numPreguntas; i++) {
+            const radio = document.querySelector(`.respuesta-radio[name="preg_${i}"]:checked`);
+            const puntos = document.querySelector(`.puntos-input[data-pregunta="${i}"]`);
+            if (radio && puntos) {
+                respuestas.push({
+                    pregunta: i,
+                    respuesta: radio.value,
+                    puntos: parseFloat(puntos.value) || 1
                 });
-            });
-
-            if (!isValid) {
-                Swal.fire('Error', 'Debes introducir palabras clave en todas las filas', 'error');
-                return;
             }
-
-            data = {
-                nombre: document.getElementById('tpl-nombre').value,
-                seccion_id: parseInt(document.getElementById('tpl-seccion').value) || null,
-                descripcion: document.getElementById('tpl-descripcion').value,
-                tipo_examen: 'free_response',
-                preguntas_texto: preguntasLibres,
-                puntaje_total: preguntasLibres.reduce((a, r) => a + (r.puntos || 1), 0)
-            };
         }
+
+        if (respuestas.length === 0) {
+            Swal.fire('Error', 'Debes agregar al menos una respuesta correcta', 'error');
+            return;
+        }
+
+        const data = {
+            nombre: document.getElementById('tpl-nombre').value,
+            seccion_id: parseInt(document.getElementById('tpl-seccion').value) || null,
+            descripcion: document.getElementById('tpl-descripcion').value,
+            tipo_examen: 'multiple_choice',
+            respuestas_correctas: respuestas,
+            puntaje_total: respuestas.reduce((a, r) => a + (r.puntos || 1), 0)
+        };
 
         await fetch('/api/plantillas', {
             method: 'POST',
@@ -449,35 +331,6 @@
         closeModal();
         loadTemplates();
         Swal.fire('Éxito', 'Plantilla guardada correctamente', 'success');
-    }
-
-    function cambiarTipoPlantilla() {
-        const tipo = document.querySelector('input[name="tipo_examen"]:checked').value;
-        const configSection = document.getElementById('config-examen');
-        const libreSection = document.getElementById('config-libre');
-
-        if (tipo === 'multiple_choice') {
-            configSection.classList.remove('hidden');
-            libreSection.classList.add('hidden');
-        } else {
-            configSection.classList.add('hidden');
-            libreSection.classList.remove('hidden');
-            if (document.getElementById('preguntas-libre-container').children.length === 0) {
-                agregarPreguntaLibre();
-            }
-        }
-
-        // Update label styling
-        const labels = document.querySelectorAll('input[name="tipo_examen"]').forEach(input => {
-            const label = input.closest('label');
-            if (input.value === tipo) {
-                label.classList.add('border-indigo-500', 'bg-indigo-50');
-                label.classList.remove('border-gray-200');
-            } else {
-                label.classList.remove('border-indigo-500', 'bg-indigo-50');
-                label.classList.add('border-gray-200');
-            }
-        });
     }
 
     document.addEventListener('DOMContentLoaded', () => {

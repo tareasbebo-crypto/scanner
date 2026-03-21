@@ -164,23 +164,15 @@ def create_plantilla():
     """Crea una nueva plantilla"""
     data = request.get_json()
     
-    tipo_examen = data.get('tipo_examen', 'multiple_choice')
-    
-    # Procesar según el tipo
-    if tipo_examen == 'multiple_choice':
-        respuestas = json.dumps(data.get('respuestas_correctas', []))
-        preguntas_texto = None
-    else:  # free_response
-        respuestas = None
-        preguntas_texto = json.dumps(data.get('preguntas_texto', []))
+    # Solo opción múltiple
+    respuestas = json.dumps(data.get('respuestas_correctas', []))
     
     plantilla = Plantilla(
         nombre=data['nombre'],
         descripcion=data.get('descripcion', ''),
         seccion_id=data.get('seccion_id'),
-        tipo_examen=tipo_examen,
+        tipo_examen='multiple_choice',
         respuestas_correctas=respuestas,
-        preguntas_texto=preguntas_texto,
         puntaje_total=data.get('puntaje_total', 10)
     )
     
@@ -208,14 +200,8 @@ def update_plantilla(id):
     if 'seccion_id' in data:
         plantilla.seccion_id = data['seccion_id']
     
-    if 'tipo_examen' in data:
-        plantilla.tipo_examen = data['tipo_examen']
-        if data['tipo_examen'] == 'multiple_choice':
-            plantilla.respuestas_correctas = json.dumps(data.get('respuestas_correctas', []))
-            plantilla.preguntas_texto = None
-        else:
-            plantilla.preguntas_texto = json.dumps(data.get('preguntas_texto', []))
-            plantilla.respuestas_correctas = None
+    if 'respuestas_correctas' in data:
+        plantilla.respuestas_correctas = json.dumps(data.get('respuestas_correctas', []))
     
     if 'puntaje_total' in data:
         plantilla.puntaje_total = data['puntaje_total']
@@ -305,16 +291,11 @@ def scan_examen():
         
         # Procesar OCR
         try:
-            # Obtener plantilla
-            plantilla = None
-            tipo_examen = 'multiple_choice'
-            if plantilla_id:
-                plantilla = Plantilla.query.get(plantilla_id)
-                if plantilla:
-                    tipo_examen = plantilla.tipo_examen
+            # Obtener plantilla si existe
+            plantilla = Plantilla.query.get(plantilla_id) if plantilla_id else None
             
-            # Procesar imagen con whitelist si es multiple choice
-            whitelist = "ABCDEVF0123456789.:) " if tipo_examen == 'multiple_choice' else None
+            # Procesar imagen con whitelist de opción múltiple
+            whitelist = "ABCDEVF0123456789.:) "
             result = ocr_engine.extract_text_with_confidence(filepath, whitelist)
             
             # Verificar si hay error en OCR
@@ -333,11 +314,8 @@ def scan_examen():
                 }), 500
             
             # Extraer respuestas según el tipo de plantilla
-            if tipo_examen == 'multiple_choice':
-                extracted_answers = ocr_engine.extract_answers(result['text'])
-            else:
-                # Para opción libre, extraer texto completo
-                extracted_answers = ocr_engine.extract_free_text(result['text'])
+            # Extraer respuestas (solo opción múltiple ahora)
+            extracted_answers = ocr_engine.extract_answers(result['text'])
             
             # Crear examen en la base de datos
             examen = Examen(
@@ -354,16 +332,11 @@ def scan_examen():
             db.session.add(examen)
             db.session.commit()
             
-            # Calificar si hay plantilla
+            # Calificar
             grade_result = None
             if plantilla:
-                if tipo_examen == 'multiple_choice':
-                    correct_answers = json.loads(plantilla.respuestas_correctas) if plantilla.respuestas_correctas else []
-                    grade_result = ocr_engine.grade_answers(extracted_answers, correct_answers)
-                else:
-                    # Opción libre - grading por palabras clave
-                    preguntas = json.loads(plantilla.preguntas_texto) if plantilla.preguntas_texto else []
-                    grade_result = ocr_engine.grade_free_response(extracted_answers, preguntas)
+                correct_answers = json.loads(plantilla.respuestas_correctas) if plantilla.respuestas_correctas else []
+                grade_result = ocr_engine.grade_answers(extracted_answers, correct_answers)
                 
                 examen.nota_final = grade_result['nota']
                 examen.estado = 'revisado'
@@ -374,12 +347,9 @@ def scan_examen():
                         examen_id=examen.id,
                         plantilla_id=plantilla_id,
                         numero=r['pregunta'],
-                        tipo=tipo_examen,
+                        tipo='multiple_choice',
                         respuesta_estudiante=r.get('respuesta_estudiante'),
                         respuesta_correcta=r.get('respuesta_correcta'),
-                        respuesta_texto=r.get('respuesta_texto'),
-                        respuesta_esperada=r.get('respuesta_esperada'),
-                        coincidencias=r.get('coincidencias'),
                         puntos=r['puntos'],
                         puntos_obtenidos=r['puntos_obtenidos']
                     )

@@ -526,49 +526,21 @@
         if (data.grade && data.grade.resultados && data.grade.resultados.length > 0) {
             data.grade.resultados.forEach(r => {
                 const div = document.createElement('div');
-                const esMulti = r.respuesta_correcta !== undefined && r.respuesta_correcta !== null;
-                const estaBien = esMulti ? r.correcta : (r.puntos_obtenidos >= r.puntos * 0.5);
+                const estaBien = r.correcta;
                 
                 div.className = `bg-gray-50 border-l-4 ${estaBien ? 'border-green-500' : 'border-red-500'} p-3 rounded mb-2 shadow-sm`;
 
-                if (esMulti) {
-                    div.innerHTML = `
-                        <div class="flex justify-between items-center w-full">
-                            <span class="font-medium text-gray-800">
-                                <i class="fas ${estaBien ? 'fa-check text-green-500' : 'fa-times text-red-500'} mr-2"></i>
-                                P${r.pregunta}. ${r.respuesta_estudiante ? `Respondió: <strong class="${estaBien ? 'text-green-600' : 'text-red-500 line-through'}">${r.respuesta_estudiante}</strong>` : '<span class="text-gray-400 italic">No respondida</span>'}
-                            </span>
-                            <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-bold">
-                                Correcta: ${r.respuesta_correcta}
-                            </span>
-                        </div>
-                    `;
-                } else {
-                    // Respuesta libre - mostrar por bloque con análisis semántico
-                    const fuenteLabel = r.fuente_analisis === 'bloque' 
-                        ? '<span class="text-xs text-indigo-500 ml-1">(análisis por bloque)</span>'
-                        : '<span class="text-xs text-gray-400 ml-1">(texto completo)</span>';
-                    
-                    div.innerHTML = `
-                        <div class="w-full">
-                            <div class="flex justify-between items-center mb-1">
-                                <span class="font-medium text-gray-800">
-                                    <i class="fas ${estaBien ? 'fa-check text-green-500' : 'fa-times text-red-500'} mr-1"></i>
-                                    P${r.pregunta} ${fuenteLabel}
-                                    <span class="text-xs text-gray-500 font-normal">(${r.puntos_obtenidos}/${r.puntos} pts)</span>
-                                </span>
-                                <span class="text-xs font-bold px-2 py-1 rounded-full ${r.coincidencias >= 70 ? 'bg-green-100 text-green-700' : r.coincidencias >= 40 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}">
-                                    ${r.coincidencias}% coincidencia
-                                </span>
-                            </div>
-                            <p class="text-xs text-gray-500 mb-1">Esperadas: <span class="font-medium text-gray-700">${r.respuesta_esperada}</span></p>
-                            ${r.palabras_clave_encontradas && r.palabras_clave_encontradas.length > 0 
-                                ? `<p class="text-xs text-green-600"><i class="fas fa-check-circle mr-1"></i>Encontradas: ${r.palabras_clave_encontradas.join(', ')}</p>` 
-                                : ''}
-                            ${r.respuesta_texto ? `<p class="text-xs text-gray-400 mt-1 border-t pt-1 italic line-clamp-2">${r.respuesta_texto}</p>` : ''}
-                        </div>
-                    `;
-                }
+                div.innerHTML = `
+                    <div class="flex justify-between items-center w-full">
+                        <span class="font-medium text-gray-800">
+                            <i class="fas ${estaBien ? 'fa-check text-green-500' : 'fa-times text-red-500'} mr-2"></i>
+                            P${r.pregunta}. ${r.respuesta_estudiante ? `Respondió: <strong class="${estaBien ? 'text-green-600' : 'text-red-500 line-through'}">${r.respuesta_estudiante}</strong>` : '<span class="text-gray-400 italic">No respondida</span>'}
+                        </span>
+                        <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-bold">
+                            Correcta: ${r.respuesta_correcta}
+                        </span>
+                    </div>
+                `;
                 answersEl.appendChild(div);
             });
         }
@@ -582,13 +554,7 @@
                 `;
                 answersEl.appendChild(div);
             });
-        } else if (data.extracted_answers && data.extracted_answers.texto_completo) {
-            answersEl.innerHTML = `
-                <div class="bg-gray-50 p-3 rounded shadow-sm">
-                    <p class="text-sm text-gray-700 font-medium mb-1">Texto detectado (${data.extracted_answers.palabras} palabras)</p>
-                    <p class="text-xs text-gray-500 line-clamp-3">${data.extracted_answers.texto_completo}</p>
-                </div>
-            `;
+
         } else {
             answersEl.innerHTML = '<p class="text-gray-500 text-sm italic">No se detectaron respuestas/resultados</p>';
         }
@@ -687,7 +653,7 @@
             plantillas.forEach(p => {
                 const opt = document.createElement('option');
                 opt.value = p.id;
-                opt.textContent = `${p.nombre} (${p.tipo === 'multiple_choice' ? 'Opción Múltiple' : p.tipo === 'libre' ? 'Opción Libre' : p.tipo})`;
+                opt.textContent = p.nombre;
                 select.appendChild(opt);
             });
         } catch (e) { console.error('Error cargando plantillas', e); }

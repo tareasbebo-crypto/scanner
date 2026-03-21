@@ -139,34 +139,6 @@ class OCREngine:
                 seen.add(a['pregunta'])
         return unique_answers
 
-    def extract_free_text(self, text):
-        """Extrae texto por bloques de pregunta"""
-        lines = text.split('\n')
-        pregunta_pattern = re.compile(r'^\s*(?:pregunta\s*)?(\d+)\s*[\.\)\:]\s*(.*)$', re.IGNORECASE)
-        
-        bloques = {}
-        pregunta_actual = None
-        
-        for line in lines:
-            line = line.strip()
-            if not line: continue
-            
-            match = pregunta_pattern.match(line)
-            if match:
-                pregunta_actual = int(match.group(1))
-                bloques[pregunta_actual] = match.group(2).strip()
-            elif pregunta_actual is not None:
-                bloques[pregunta_actual] = bloques.get(pregunta_actual, '') + ' ' + line
-        
-        if not bloques:
-            return {'texto_completo': text, 'respuestas_por_pregunta': {}, 'palabras': len(text.split())}
-        
-        return {
-            'texto_completo': text,
-            'respuestas_por_pregunta': {k: v.strip() for k, v in bloques.items() if v.strip()},
-            'palabras': len(text.split())
-        }
-
     def detect_student_code(self, text):
         """Detecta el código de estudiante"""
         patterns = [
@@ -213,65 +185,6 @@ class OCREngine:
             puntos_totales += pts
             puntos_obtenidos += p_obt
         
-        nota = (puntos_obtenidos / puntos_totales * 10) if puntos_totales > 0 else 0
-        return {
-            'resultados': resultados, 'nota': round(nota, 2),
-            'porcentaje': round((puntos_obtenidos / puntos_totales * 100), 2) if puntos_totales > 0 else 0
-        }
-
-    def grade_free_response(self, extracted_text, preguntas):
-        """Califica respuestas libres por palabras clave"""
-        import difflib
-        import unicodedata
-        
-        def normalize(t):
-            if not t: return ""
-            t = unicodedata.normalize('NFKD', str(t)).encode('ASCII', 'ignore').decode('utf-8')
-            return t.lower()
-        
-        resultados = []
-        puntos_totales = 0
-        puntos_obtenidos = 0
-        
-        respuestas_por_pregunta = extracted_text.get('respuestas_por_pregunta', {})
-        texto_completo = extracted_text.get('texto_completo', '')
-        
-        for pregunta in preguntas:
-            p_num = pregunta.get('pregunta', 1)
-            pts = pregunta.get('puntos', 1)
-            texto_analizar = respuestas_por_pregunta.get(p_num) or respuestas_por_pregunta.get(str(p_num)) or texto_completo
-            texto_norm = normalize(texto_analizar)
-            
-            palabras_clave = pregunta.get('palabras_clave', [])
-            if isinstance(palabras_clave, str):
-                palabras_clave = [p.strip() for p in palabras_clave.split(',')]
-            
-            match_count = 0
-            found_keys = []
-            for grupo in palabras_clave:
-                sinonimos = [s.strip() for s in grupo.split('|')]
-                for sin in sinonimos:
-                    if normalize(sin) in texto_norm:
-                        match_count += 1
-                        found_keys.append(sinonimos[0])
-                        break
-            
-            total_keys = len(palabras_clave)
-            perc = (match_count / total_keys * 100) if total_keys > 0 else 0
-            p_obt = pts if perc >= 70 else (pts * 0.6 if perc >= 40 else (pts * 0.3 if perc >= 20 else 0))
-            
-            resultados.append({
-                'pregunta': p_num,
-                'respuesta_texto': texto_analizar[:250],
-                'respuesta_esperada': ', '.join([g.split('|')[0] for g in palabras_clave]),
-                'palabras_clave_encontradas': found_keys,
-                'coincidencias': round(perc, 2),
-                'puntos': pts,
-                'puntos_obtenidos': round(p_obt, 2)
-            })
-            puntos_totales += pts
-            puntos_obtenidos += p_obt
-            
         nota = (puntos_obtenidos / puntos_totales * 10) if puntos_totales > 0 else 0
         return {
             'resultados': resultados, 'nota': round(nota, 2),
