@@ -85,17 +85,7 @@ function createToastContainer() {
     return container;
 }
 
-// Menú móvil
-document.addEventListener('DOMContentLoaded', () => {
-    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-    const mobileMenu = document.getElementById('mobile-menu');
-
-    if (mobileMenuBtn && mobileMenu) {
-        mobileMenuBtn.addEventListener('click', () => {
-            mobileMenu.classList.toggle('hidden');
-        });
-    }
-});
+// El menú móvil se maneja ahora directamente en base.html para evitar conflictos de carga
 
 // Funciones globales para manejo de modales
 window.openModal = function (modalId) {

@@ -54,7 +54,7 @@
                 </div>
 
                 <!-- Botón menú móvil -->
-                <button id="mobile-menu-btn" class="md:hidden hover:bg-indigo-700 p-2 rounded">
+                <button id="mobile-menu-btn" onclick="document.getElementById('mobile-menu').classList.toggle('hidden')" class="md:hidden hover:bg-indigo-700 p-2 rounded focus:outline-none">
                     <i class="fas fa-bars"></i>
                 </button>
             </div>
@@ -112,10 +112,6 @@
             }
         });
 
-        // Menú móvil toggle
-        document.getElementById('mobile-menu-btn').addEventListener('click', () => {
-            document.getElementById('mobile-menu').classList.toggle('hidden');
-        });
     </script>
 
     {% block extra_js %}{% endblock %}
