@@ -1,7 +1,7 @@
 """
-GradeScanner - Cloud OCR Engine
-Motor de reconocimiento óptico de caracteres basado en API (OCR.space)
-Ideal para despliegue en Render/Cloud sin dependencias locales.
+GradeScanner - Cloud OCR Engine + Bubble Sheet Detector
+Motor híbrido: detecta burbujas rellenas en hojas de opción múltiple
+Y también soporta OCR de texto para formatos escritos.
 """
 
 import os
@@ -10,8 +10,19 @@ import json
 import requests
 from datetime import datetime
 
+# Intentar importar OpenCV para detección de burbujas
+try:
+    import cv2
+    import numpy as np
+    OPENCV_AVAILABLE = True
+    print("[OCR] ✓ OpenCV disponible - Detección de burbujas habilitada")
+except ImportError:
+    OPENCV_AVAILABLE = False
+    print("[OCR] ⚠ OpenCV no disponible - Solo modo OCR texto")
+
+
 class OCREngine:
-    """Motor OCR basado en la nube para máxima compatibilidad."""
+    """Motor híbrido: Detección de burbujas + OCR de texto en la nube."""
     
     def __init__(self, config=None):
         self.config = config or {}
@@ -19,17 +30,161 @@ class OCREngine:
         self.api_key = self.config.get('OCR_API_KEY', 'helloworld')
         self.api_url = 'https://api.ocr.space/parse/image'
         self.language = self.config.get('languages', 'spa')
+        
+        # Inicializar detector de burbujas si OpenCV está disponible
+        self.bubble_detector = None
+        if OPENCV_AVAILABLE:
+            from bubble_detector import BubbleDetector
+            self.bubble_detector = BubbleDetector()
 
     def check_tesseract(self):
         """Mantenemos este método para compatibilidad con la UI, pero siempre devuelve OK Cloud."""
         return {
             'disponible': True,
-            'version': 'Cloud API (OCR.space)',
+            'version': 'Cloud API (OCR.space) + Bubble Detector',
             'idiomas': ['spa', 'eng'],
             'tiene_espanol': True,
-            'ruta': 'Cloud Endpoint',
-            'mensaje': 'Motor Cloud OCR conectado correctamente.'
+            'ruta': 'Cloud Endpoint + OpenCV',
+            'mensaje': 'Motor Cloud OCR + Detección de Burbujas conectado correctamente.',
+            'bubble_detection': OPENCV_AVAILABLE
         }
+
+    def detect_image_type(self, image_path):
+        """
+        Detecta automáticamente si la imagen es una hoja de burbujas o texto normal.
+        
+        Returns:
+            'bubble_sheet' si es una hoja de burbujas
+            'text' si es texto normal
+            'unknown' si no se puede determinar
+        """
+        if not OPENCV_AVAILABLE or not self.bubble_detector:
+            return 'text'
+        
+        try:
+            is_bubble = self.bubble_detector.is_bubble_sheet(image_path)
+            result = 'bubble_sheet' if is_bubble else 'text'
+            print(f"[OCR] Tipo de imagen detectado: {result}")
+            return result
+        except Exception as e:
+            print(f"[OCR] Error detectando tipo de imagen: {e}")
+            return 'unknown'
+
+    def process_image(self, image_path, force_mode=None, num_questions=None, options=None):
+        """
+        Procesa una imagen de examen de forma inteligente.
+        
+        1. Detecta automáticamente si es una hoja de burbujas o texto
+        2. Usa el método apropiado
+        3. Devuelve las respuestas extraídas
+        
+        Args:
+            image_path: Ruta a la imagen
+            force_mode: 'bubble', 'text', o None (auto-detectar)
+            num_questions: Número esperado de preguntas (para burbujas)
+            options: Lista de opciones (ej: ['A','B','C','D','E'])
+            
+        Returns:
+            Dict con:
+                - answers: lista de respuestas [{pregunta, respuesta, confidence, match}]
+                - text: texto OCR extraído (si aplica)
+                - confidence: confianza promedio
+                - method: método usado ('bubble' o 'ocr')
+                - image_type: tipo de imagen detectado
+        """
+        if not os.path.exists(image_path):
+            return {
+                'answers': [],
+                'text': '',
+                'confidence': 0,
+                'method': 'none',
+                'error': 'Archivo no encontrado'
+            }
+
+        # Determinar el modo de procesamiento
+        if force_mode == 'bubble':
+            mode = 'bubble_sheet'
+        elif force_mode == 'text':
+            mode = 'text'
+        else:
+            mode = self.detect_image_type(image_path)
+
+        result = {
+            'answers': [],
+            'text': '',
+            'confidence': 0,
+            'method': 'none',
+            'image_type': mode,
+            'words': 0
+        }
+
+        # Modo 1: Detección de burbujas
+        if mode == 'bubble_sheet' and self.bubble_detector:
+            print("[OCR] Procesando como hoja de burbujas...")
+            
+            # Configurar opciones si se especifican
+            if options:
+                self.bubble_detector.options = options
+                self.bubble_detector.num_options = len(options)
+            
+            bubble_result = self.bubble_detector.detect_answers(image_path, num_questions)
+            
+            if bubble_result and bubble_result.get('answers'):
+                result['answers'] = bubble_result['answers']
+                result['confidence'] = bubble_result.get('confidence', 0)
+                result['method'] = f"bubble_{bubble_result.get('method', 'unknown')}"
+                result['text'] = self._format_bubble_results_as_text(bubble_result['answers'])
+                result['words'] = len(bubble_result['answers'])
+                
+                print(f"[OCR] Burbujas detectadas: {len(bubble_result['answers'])} respuestas")
+                return result
+            else:
+                print("[OCR] No se detectaron burbujas, intentando OCR de texto...")
+                # Fallback a OCR de texto
+                mode = 'text'
+
+        # Modo 2: OCR de texto (original)
+        if mode in ('text', 'unknown'):
+            print("[OCR] Procesando con OCR de texto...")
+            ocr_result = self.extract_text_with_confidence(image_path)
+            
+            if ocr_result.get('error'):
+                result['error'] = ocr_result['error']
+                return result
+            
+            result['text'] = ocr_result.get('text', '')
+            result['confidence'] = ocr_result.get('confidence', 0)
+            result['words'] = ocr_result.get('words', 0)
+            result['method'] = 'ocr_text'
+            
+            # Extraer respuestas del texto
+            if result['text']:
+                answers = self.extract_answers(result['text'])
+                result['answers'] = answers
+        
+        # Si no se encontraron respuestas con ningún método, intentar el otro
+        if not result['answers'] and mode == 'text' and OPENCV_AVAILABLE and self.bubble_detector:
+            print("[OCR] OCR no encontró respuestas, intentando detección de burbujas como fallback...")
+            bubble_result = self.bubble_detector.detect_answers(image_path, num_questions)
+            if bubble_result and bubble_result.get('answers'):
+                result['answers'] = bubble_result['answers']
+                result['confidence'] = bubble_result.get('confidence', 0)
+                result['method'] = f"bubble_{bubble_result.get('method', 'unknown')}_fallback"
+                if not result['text']:
+                    result['text'] = self._format_bubble_results_as_text(bubble_result['answers'])
+
+        return result
+
+    def _format_bubble_results_as_text(self, answers):
+        """Formatea las respuestas de burbujas como texto legible."""
+        lines = ["Respuestas detectadas (Hoja de Burbujas):"]
+        lines.append("=" * 40)
+        for a in answers:
+            conf = a.get('confidence', 0)
+            lines.append(f"Pregunta {a['pregunta']}: {a['respuesta']}  (Confianza: {conf:.0f}%)")
+        lines.append("=" * 40)
+        lines.append(f"Total: {len(answers)} respuestas detectadas")
+        return "\n".join(lines)
 
     def extract_text_with_confidence(self, image_path, whitelist=None):
         """Extrae texto enviando la imagen a la API de OCR.space."""

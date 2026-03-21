@@ -22,24 +22,36 @@ def init_app(app):
     
     config = get_config()
     
-    # Configurar URI según el entorno
-    if config.USE_SUPABASE:
-        # Usar PostgreSQL de Supabase
-        app.config['SQLALCHEMY_DATABASE_URI'] = config.SQLALCHEMY_DATABASE_URI
-        print(f"✓ Conectando a Supabase/PostgreSQL")
-    else:
-        # Usar SQLite local
-        db_path = get_database_path()
-        app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
-        print(f"✓ Usando SQLite local: {db_path}")
+    # Verificar que tenemos una URL de base de datos válida
+    db_uri = config.SQLALCHEMY_DATABASE_URI
     
+    if not db_uri or db_uri == 'sqlite:///':
+        # Error: No hay base de datos configurada
+        print("ERROR: No se ha configurado la base de datos!")
+        print("Para SQLite local: USE_SUPABASE=false")
+        print("Para Supabase: USE_SUPABASE=true y DATABASE_URL=[tu-url]")
+        raise ValueError("DATABASE_URL no configurada")
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SQLALCHEMY_ECHO'] = config.DEBUG
     
     db.init_app(app)
     
     with app.app_context():
+        # create_all() NO borra tablas existentes, solo las crea si no existen
         db.create_all()
-        print("✓ Base de datos inicializada correctamente")
+        
+        # Verificar que las tablas existen
+        from sqlalchemy import inspect
+        inspector = inspect(db.engine)
+        tables = inspector.get_table_names()
+        
+        if tables:
+            print(f"✓ Base de datos conectada. Tablas: {', '.join(tables)}")
+        else:
+            print("⚠ Tablas creadas (base de datos vacía)")
+        
+        print(f"✓ URI de base de datos: {db_uri.split('@')[0]}@***")  # Hide password
         
     return db

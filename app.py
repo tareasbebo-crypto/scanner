@@ -270,7 +270,7 @@ def ocr_test():
 
 @app.route('/api/scan', methods=['POST'])
 def scan_examen():
-    """Escanea un examen desde una imagen"""
+    """Escanea un examen desde una imagen (soporta bubble sheets y texto)"""
     if 'file' not in request.files:
         return jsonify({'error': 'No se recibió ningún archivo'}), 400
     
@@ -289,33 +289,72 @@ def scan_examen():
         seccion_id = request.form.get('seccion_id', type=int)
         plantilla_id = request.form.get('plantilla_id', type=int)
         
-        # Procesar OCR
+        # Modo de detección: 'auto', 'bubble', 'text'
+        detection_mode = request.form.get('detection_mode', 'auto')
+        
+        # Opciones personalizadas (ej: "A,B,C,D" o "A,B,C,D,E")
+        custom_options = request.form.get('options', '')
+        options = [x.strip().upper() for x in custom_options.split(',') if x.strip()] if custom_options else None
+        
+        # Número de preguntas esperado (opcional)
+        num_questions = request.form.get('num_questions', type=int)
+        
+        # Procesar
         try:
             # Obtener plantilla si existe
             plantilla = Plantilla.query.get(plantilla_id) if plantilla_id else None
             
-            # Procesar imagen con whitelist de opción múltiple
-            whitelist = "ABCDEVF0123456789.:) "
-            result = ocr_engine.extract_text_with_confidence(filepath, whitelist)
+            # Determinar opciones desde plantilla si no se especificaron
+            if not options and plantilla and plantilla.respuestas_correctas:
+                try:
+                    correct = json.loads(plantilla.respuestas_correctas)
+                    if correct:
+                        # Inferir opciones disponibles de las respuestas correctas
+                        all_opts = set(c.get('respuesta', '').upper() for c in correct if c.get('respuesta'))
+                        if all_opts:
+                            # Asegurar que incluimos todas las letras hasta la máxima
+                            max_opt = max(all_opts)
+                            options = [chr(c) for c in range(ord('A'), ord(max_opt) + 1)]
+                        if not num_questions:
+                            num_questions = len(correct)
+                except:
+                    pass
             
-            # Verificar si hay error en OCR
-            ocr_error = result.get('error')
-            if ocr_error:
+            # Determinar force_mode basado en detection_mode
+            force_mode = None
+            if detection_mode == 'bubble':
+                force_mode = 'bubble'
+            elif detection_mode == 'text':
+                force_mode = 'text'
+            # 'auto' = None (auto-detectar)
+            
+            # Usar el método híbrido de procesamiento
+            result = ocr_engine.process_image(
+                filepath,
+                force_mode=force_mode,
+                num_questions=num_questions,
+                options=options
+            )
+            
+            # Verificar si hay error
+            if result.get('error') and not result.get('answers'):
                 return jsonify({
-                    'error': f'Error de OCR: {ocr_error}',
-                    'details': 'La imagen no pudo ser procesada. Verifica que la imagen sea legible y no exceda 2MB.'
+                    'error': f'Error de procesamiento: {result["error"]}',
+                    'details': 'La imagen no pudo ser procesada. Verifica que la imagen sea legible.',
+                    'method': result.get('method', 'none'),
+                    'image_type': result.get('image_type', 'unknown')
                 }), 500
             
-            # Verificar que se extrajo texto
-            if not result.get('text') or result.get('words', 0) == 0:
+            # Verificar que se encontraron respuestas o texto
+            if not result.get('answers') and not result.get('text'):
                 return jsonify({
-                    'error': 'No se detectó texto en la imagen',
-                    'details': 'La imagen puede ser ilegible o estar vacía. Intenta con una imagen más clara.'
+                    'error': 'No se detectaron respuestas ni texto en la imagen',
+                    'details': 'La imagen puede ser ilegible o no contener un formato reconocible. Intenta con una imagen más clara o selecciona el modo de detección correcto.',
+                    'method': result.get('method', 'none'),
+                    'image_type': result.get('image_type', 'unknown')
                 }), 500
             
-            # Extraer respuestas según el tipo de plantilla
-            # Extraer respuestas (solo opción múltiple ahora)
-            extracted_answers = ocr_engine.extract_answers(result['text'])
+            extracted_answers = result.get('answers', [])
             
             # Crear examen en la base de datos
             examen = Examen(
@@ -324,15 +363,15 @@ def scan_examen():
                 seccion_id=seccion_id,
                 plantilla_id=plantilla_id,
                 imagen_path=f"/uploads/{filename}",
-                texto_ocr=result['text'],
-                confianza_ocr=result['confidence'],
+                texto_ocr=result.get('text', ''),
+                confianza_ocr=result.get('confidence', 0),
                 estado='procesado' if plantilla else 'pendiente'
             )
             
             db.session.add(examen)
             db.session.commit()
             
-            # Calificar
+            # Calificar si hay plantilla
             grade_result = None
             if plantilla:
                 correct_answers = json.loads(plantilla.respuestas_correctas) if plantilla.respuestas_correctas else []
@@ -360,17 +399,61 @@ def scan_examen():
             return jsonify({
                 'examen': examen.to_dict(),
                 'ocr': {
-                    'text': result['text'],
-                    'confidence': result['confidence'],
+                    'text': result.get('text', ''),
+                    'confidence': result.get('confidence', 0),
                     'words': result.get('words', 0),
-                    'error': result.get('error')
+                    'error': result.get('error'),
+                    'method': result.get('method', 'unknown'),
+                    'image_type': result.get('image_type', 'unknown')
                 },
                 'extracted_answers': extracted_answers,
                 'grade': grade_result
             })
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return jsonify({'error': f'Error al procesar: {str(e)}'}), 500
+    
+    return jsonify({'error': 'Tipo de archivo no permitido'}), 400
+
+
+@app.route('/api/scan/bubble-test', methods=['POST'])
+def scan_bubble_test():
+    """Endpoint de prueba para verificar detección de burbujas"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No se recibió ningún archivo'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No se seleccionó ningún archivo'}), 400
+    
+    if file:
+        import tempfile
+        
+        suffix = '.' + file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else '.jpg'
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            file.save(tmp.name)
+            tmp_path = tmp.name
+        
+        try:
+            # Probar detección de tipo
+            image_type = ocr_engine.detect_image_type(tmp_path)
+            
+            # Probar procesamiento completo
+            result = ocr_engine.process_image(tmp_path, force_mode='bubble')
+            
+            return jsonify({
+                'image_type': image_type,
+                'method': result.get('method', 'none'),
+                'answers': result.get('answers', []),
+                'confidence': result.get('confidence', 0),
+                'text': result.get('text', ''),
+                'error': result.get('error')
+            })
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
     
     return jsonify({'error': 'Tipo de archivo no permitido'}), 400
 

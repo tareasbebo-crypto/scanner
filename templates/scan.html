@@ -162,6 +162,48 @@
 
             <!-- Opciones adicionales -->
             <div class="mt-6">
+                <!-- Modo de detección -->
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-magic text-indigo-500 mr-1"></i>Modo de Detección
+                </label>
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    <button id="mode-auto" class="detection-mode-btn active py-2 px-3 rounded-lg text-sm font-medium border-2 border-indigo-500 bg-indigo-50 text-indigo-700 transition-all"
+                        onclick="setDetectionMode('auto')">
+                        <i class="fas fa-wand-magic-sparkles mr-1"></i>Auto
+                    </button>
+                    <button id="mode-bubble" class="detection-mode-btn py-2 px-3 rounded-lg text-sm font-medium border-2 border-gray-200 text-gray-600 hover:border-indigo-300 transition-all"
+                        onclick="setDetectionMode('bubble')">
+                        <i class="fas fa-circle mr-1"></i>Burbujas
+                    </button>
+                    <button id="mode-text" class="detection-mode-btn py-2 px-3 rounded-lg text-sm font-medium border-2 border-gray-200 text-gray-600 hover:border-indigo-300 transition-all"
+                        onclick="setDetectionMode('text')">
+                        <i class="fas fa-font mr-1"></i>Texto OCR
+                    </button>
+                </div>
+                <p id="mode-description" class="text-xs text-gray-400 mb-4 -mt-2">
+                    <i class="fas fa-info-circle mr-1"></i>Auto-detecta si la imagen es una hoja de burbujas o texto escrito
+                </p>
+
+                <!-- Opciones de respuesta (para modo burbujas) -->
+                <div id="bubble-options-panel" class="hidden mb-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <label class="block text-sm font-medium text-indigo-700 mb-2">
+                        <i class="fas fa-list-ol mr-1"></i>Opciones de Respuesta
+                    </label>
+                    <div class="flex gap-2 mb-2">
+                        <button class="option-preset px-3 py-1 text-xs rounded-full bg-indigo-100 text-indigo-700 hover:bg-indigo-200 font-medium"
+                            onclick="setOptions('A,B,C,D')">A-D (4)</button>
+                        <button class="option-preset px-3 py-1 text-xs rounded-full bg-indigo-200 text-indigo-800 hover:bg-indigo-300 font-medium"
+                            onclick="setOptions('A,B,C,D,E')">A-E (5)</button>
+                        <button class="option-preset px-3 py-1 text-xs rounded-full bg-indigo-100 text-indigo-700 hover:bg-indigo-200 font-medium"
+                            onclick="setOptions('A,B,C,D,E,F')">A-F (6)</button>
+                        <button class="option-preset px-3 py-1 text-xs rounded-full bg-indigo-100 text-indigo-700 hover:bg-indigo-200 font-medium"
+                            onclick="setOptions('V,F')">V/F</button>
+                    </div>
+                    <input type="text" id="scan-options" class="w-full p-2 text-sm border rounded-lg"
+                        placeholder="A,B,C,D,E" value="A,B,C,D,E">
+                    <p class="text-xs text-indigo-500 mt-1">Separar opciones con comas</p>
+                </div>
+
                 <label class="block text-sm font-medium text-gray-700 mb-2">Sección / Clase</label>
                 <select id="scan-seccion" class="w-full p-3 border rounded-lg mb-4">
                     <option value="">Seleccionar sección...</option>
@@ -285,6 +327,47 @@
     let stream = null;
     let currentFacingMode = 'environment';
     let capturedImage = null;
+    let detectionMode = 'auto';  // 'auto', 'bubble', 'text'
+
+    // ================== MODO DE DETECCIÓN ==================
+    function setDetectionMode(mode) {
+        detectionMode = mode;
+        
+        // Actualizar botones
+        document.querySelectorAll('.detection-mode-btn').forEach(btn => {
+            btn.className = 'detection-mode-btn py-2 px-3 rounded-lg text-sm font-medium border-2 border-gray-200 text-gray-600 hover:border-indigo-300 transition-all';
+        });
+        const activeBtn = document.getElementById(`mode-${mode}`);
+        if (activeBtn) {
+            activeBtn.className = 'detection-mode-btn active py-2 px-3 rounded-lg text-sm font-medium border-2 border-indigo-500 bg-indigo-50 text-indigo-700 transition-all';
+        }
+        
+        // Actualizar descripción
+        const desc = document.getElementById('mode-description');
+        const descriptions = {
+            'auto': '<i class="fas fa-info-circle mr-1"></i>Auto-detecta si la imagen es una hoja de burbujas o texto escrito',
+            'bubble': '<i class="fas fa-info-circle mr-1"></i>Forzar detección de burbujas/óvalos rellenos (hojas de opción múltiple)',
+            'text': '<i class="fas fa-info-circle mr-1"></i>Forzar OCR de texto (para exámenes con respuestas escritas como "1. A")'
+        };
+        desc.innerHTML = descriptions[mode] || descriptions['auto'];
+        
+        // Mostrar/ocultar panel de opciones de burbujas
+        const bubblePanel = document.getElementById('bubble-options-panel');
+        if (mode === 'bubble' || mode === 'auto') {
+            bubblePanel.classList.remove('hidden');
+        } else {
+            bubblePanel.classList.add('hidden');
+        }
+    }
+
+    function setOptions(optionsStr) {
+        document.getElementById('scan-options').value = optionsStr;
+        // Highlight the selected preset
+        document.querySelectorAll('.option-preset').forEach(btn => {
+            btn.className = btn.className.replace('bg-indigo-200 text-indigo-800', 'bg-indigo-100 text-indigo-700');
+        });
+        event.target.className = event.target.className.replace('bg-indigo-100 text-indigo-700', 'bg-indigo-200 text-indigo-800');
+    }
 
     // Inicializar
     document.addEventListener('DOMContentLoaded', async () => {
@@ -461,6 +544,13 @@
             formData.append('titulo', titulo);
             if (nombreEstudiante) formData.append('nombre_estudiante', nombreEstudiante);
             if (plantillaId) formData.append('plantilla_id', plantillaId);
+            
+            // Enviar modo de detección y opciones
+            formData.append('detection_mode', detectionMode);
+            const customOptions = document.getElementById('scan-options');
+            if (customOptions && customOptions.value) {
+                formData.append('options', customOptions.value);
+            }
 
             const result = await fetch('/api/scan', {
                 method: 'POST',
@@ -515,9 +605,34 @@
             document.getElementById('grade-container').classList.add('hidden');
         }
 
-        // OCR
+        // OCR / Método
         document.getElementById('result-text').textContent = data.ocr.text || 'No se detectó texto';
         document.getElementById('result-confidence').textContent = `${data.ocr.confidence.toFixed(1)}%`;
+        
+        // Mostrar método de detección usado
+        const methodLabels = {
+            'bubble_contours': '🔵 Burbujas (Contornos)',
+            'bubble_grid': '🔵 Burbujas (Cuadrícula)',
+            'bubble_threshold': '🔵 Burbujas (Umbral)',
+            'bubble_contours_fallback': '🔵 Burbujas (Contornos - Fallback)',
+            'bubble_grid_fallback': '🔵 Burbujas (Cuadrícula - Fallback)',
+            'bubble_threshold_fallback': '🔵 Burbujas (Umbral - Fallback)',
+            'ocr_text': '📝 OCR Texto',
+            'none': '❌ No detectado'
+        };
+        const methodLabel = methodLabels[data.ocr.method] || data.ocr.method;
+        const imageTypeLabel = data.ocr.image_type === 'bubble_sheet' ? 'Hoja de Burbujas' : 
+                             data.ocr.image_type === 'text' ? 'Texto' : 'Desconocido';
+        
+        // Add method info after confidence
+        const confEl = document.getElementById('result-confidence').parentElement;
+        let methodInfo = confEl.querySelector('.method-info');
+        if (!methodInfo) {
+            methodInfo = document.createElement('span');
+            methodInfo.className = 'method-info ml-3 text-xs';
+            confEl.appendChild(methodInfo);
+        }
+        methodInfo.innerHTML = `| Método: <strong>${methodLabel}</strong> | Tipo: ${imageTypeLabel}`;
 
         // Respuestas
         const answersEl = document.getElementById('result-answers');
