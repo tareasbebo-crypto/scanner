@@ -22,39 +22,57 @@ class Config:
     # Configuración de base de datos
     USE_SUPABASE = os.environ.get('USE_SUPABASE', 'false').lower() == 'true'
     
-    if USE_SUPABASE:
-        # Configuración Supabase
+    # Obtener DATABASE_URL ( Render proporciona esta variable)
+    database_url = os.environ.get('DATABASE_URL', '')
+    
+    if USE_SUPABASE and database_url:
+        # Usar la URL de PostgreSQL de Supabase/Render
+        SQLALCHEMY_DATABASE_URI = database_url
+        print(f"✓ Conectando a PostgreSQL/Supabase")
+    elif USE_SUPABASE:
+        # Configuración manual de Supabase
         SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
         SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
         SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY', '')
         
-        # Usar Supabase como PostgreSQL
-        SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', '')
-        
-        # Si no hay DATABASE_URL, construir desde Supabase
-        if not SQLALCHEMY_DATABASE_URI and SUPABASE_URL:
-            # Supabase proporciona PostgreSQL en postgres://
-            SQLALCHEMY_DATABASE_URI = os.environ.get('SUPABASE_DB_URL', f'postgresql://postgres:password@db.{SUPABASE_URL.split("//")[1]}/postgres')
+        if SUPABASE_URL:
+            # Construir URL de PostgreSQL desde Supabase
+            # formateo: postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
+            SUPABASE_DB_URL = os.environ.get('SUPABASE_DB_URL')
+            if SUPABASE_DB_URL:
+                SQLALCHEMY_DATABASE_URI = SUPABASE_DB_URL
+            else:
+                # Intentar construir desde SUPABASE_URL
+                try:
+                    project_ref = SUPABASE_URL.split('//')[1].split('.')[0]
+                    SQLALCHEMY_DATABASE_URI = f'postgresql://postgres:password@db.{project_ref}.supabase.co:5432/postgres'
+                except:
+                    SQLALCHEMY_DATABASE_URI = ''
+        else:
+            SQLALCHEMY_DATABASE_URI = ''
+        print(f"✓ Configuración Supabase manual")
     else:
         # Configuración SQLite local
         BASE_DIR = os.path.abspath(os.path.dirname(__file__))
         SQLALCHEMY_DATABASE_URI = f"sqlite:///{os.path.join(BASE_DIR, 'gradescanner.db')}"
+        print(f"✓ Usando SQLite local")
     
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ECHO = False
+    SQLALCHEMY_ECHO = True  # Enable for debugging
 
 
 class DevelopmentConfig(Config):
     """Configuración de desarrollo"""
     DEBUG = True
     ENV = 'development'
+    USE_SUPABASE = False  # SQLite local
 
 
 class ProductionConfig(Config):
     """Configuración de producción (Render/Supabase)"""
     DEBUG = False
     ENV = 'production'
-    USE_SUPABASE = True
+    SQLALCHEMY_ECHO = False
 
 
 class TestingConfig(Config):
