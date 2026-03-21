@@ -158,15 +158,15 @@
             </div>
 
             <!-- Opciones adicionales -->
-            <div class="mt-6 pt-6 border-t">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Curso</label>
-                <select id="scan-curso" class="w-full p-3 border rounded-lg mb-4">
-                    <option value="">Seleccionar curso...</option>
+            <div class="mt-6">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Sección / Clase</label>
+                <select id="scan-seccion" class="w-full p-3 border rounded-lg mb-4">
+                    <option value="">Seleccionar sección...</option>
                 </select>
 
                 <label class="block text-sm font-medium text-gray-700 mb-2">Título del examen</label>
                 <input type="text" id="scan-titulo" class="w-full p-3 border rounded-lg mb-4"
-                    placeholder="Ej: Examen Parcial 1">
+                    placeholder="Ej: Evaluación 1">
 
                 <label class="block text-sm font-medium text-gray-700 mb-2">Plantilla (opcional)</label>
                 <select id="scan-plantilla" class="w-full p-3 border rounded-lg">
@@ -189,8 +189,8 @@
             <!-- Loading -->
             <div id="loading" class="hidden text-center py-12">
                 <div class="loading-spinner mx-auto mb-4"></div>
-                <p class="text-gray-600">Pro</p>
-                cesando imagen... <p class="text-sm text-gray-400 mt-2">Extrayendo texto con OCR</p>
+                <p class="text-gray-600">Procesando imagen...</p>
+                <p class="text-sm text-gray-400 mt-2">Extrayendo texto con OCR</p>
             </div>
 
             <!-- Resultados -->
@@ -281,29 +281,31 @@
 
     // Inicializar
     document.addEventListener('DOMContentLoaded', async () => {
-        await loadCursos();
+        await loadSecciones();
         await loadPlantillas();
         if (currentMode === 'camera') {
             startCamera();
         }
     });
 
-    // Cargar cursos
-    async function loadCursos() {
+    // Cargar secciones
+    async function loadSecciones() {
         try {
-            const response = await fetch('/api/cursos');
-            const cursos = await response.json();
-            const select = document.getElementById('scan-curso');
-            cursos.forEach(curso => {
+            const response = await fetch('/api/secciones');
+            const secciones = await response.json();
+            const select = document.getElementById('scan-seccion');
+            secciones.forEach(s => {
                 const option = document.createElement('option');
-                option.value = curso.id;
-                option.textContent = `${curso.codigo} - ${curso.nombre}`;
+                option.value = s.id;
+                option.textContent = s.nombre_completo;
                 select.appendChild(option);
             });
         } catch (error) {
-            console.error('Error cargando cursos:', error);
+            console.error('Error cargando secciones:', error);
         }
     }
+
+
 
     // Cargar plantillas
     async function loadPlantillas() {
@@ -430,7 +432,7 @@
             return;
         }
 
-        const cursoId = document.getElementById('scan-curso').value;
+        const seccionId = document.getElementById('scan-seccion').value;
         const titulo = document.getElementById('scan-titulo').value || 'Examen sin título';
         const plantillaId = document.getElementById('scan-plantilla').value;
 
@@ -447,7 +449,9 @@
 
             const formData = new FormData();
             formData.append('file', blob, 'exam.jpg');
-            formData.append('curso_id', cursoId);
+            if (seccionId) {
+                formData.append('seccion_id', seccionId);
+            }
             formData.append('titulo', titulo);
             if (plantillaId) {
                 formData.append('plantilla_id', plantillaId);
@@ -482,9 +486,9 @@
 
         // Info básica
         document.getElementById('result-title').textContent = data.examen.titulo;
-        document.getElementById('result-student').textContent = data.student_code
-            ? `Código: ${data.student_code}`
-            : 'Estudiante no identificado';
+        document.getElementById('result-student').textContent = data.examen.seccion
+            ? `Sección: ${data.examen.seccion.nombre_completo}`
+            : 'Sección no identificada';
 
         // Estado
         const statusEl = document.getElementById('result-status');
@@ -511,18 +515,64 @@
         const answersEl = document.getElementById('result-answers');
         answersEl.innerHTML = '';
 
-        if (data.extracted_answers && data.extracted_answers.length > 0) {
+        if (data.grade && data.grade.resultados && data.grade.resultados.length > 0) {
+            data.grade.resultados.forEach(r => {
+                const div = document.createElement('div');
+                const esMulti = r.respuesta_correcta !== undefined && r.respuesta_correcta !== null;
+                const estaBien = esMulti ? r.correcta : (r.puntos_obtenidos >= r.puntos / 2);
+                
+                div.className = `bg-gray-50 border-l-4 ${estaBien ? 'border-green-500' : 'border-red-500'} p-3 rounded mb-2 shadow-sm`;
+
+                if (esMulti) {
+                    div.innerHTML = `
+                        <div class="flex justify-between items-center w-full">
+                            <span class="font-medium text-gray-800">
+                                <i class="fas ${estaBien ? 'fa-check text-green-500' : 'fa-times text-red-500'} mr-2"></i>
+                                P${r.pregunta}. ${r.respuesta_estudiante ? `Respondió: <strong class="${estaBien ? 'text-green-600' : 'text-red-500 line-through'}">${r.respuesta_estudiante}</strong>` : '<span class="text-gray-400 italic">No respondida</span>'}
+                            </span>
+                            <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-bold">
+                                Correcta: ${r.respuesta_correcta}
+                            </span>
+                        </div>
+                    `;
+                } else {
+                    div.innerHTML = `
+                        <div class="w-full">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="font-medium text-gray-800">
+                                    <i class="fas ${estaBien ? 'fa-check text-green-500' : 'fa-times text-red-500'} mr-2"></i>
+                                    P${r.pregunta}. <span class="text-xs text-gray-500 font-normal">(${r.puntos_obtenidos}/${r.puntos} pts)</span>
+                                </span>
+                                <span class="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
+                                    Coincidencia: ${r.coincidencias}%
+                                </span>
+                            </div>
+                            <p class="text-xs text-gray-500 truncate">Esperadas: <span class="font-medium text-gray-700">${r.respuesta_esperada}</span></p>
+                        </div>
+                    `;
+                }
+                answersEl.appendChild(div);
+            });
+        }
+        else if (Array.isArray(data.extracted_answers) && data.extracted_answers.length > 0) {
             data.extracted_answers.forEach(ans => {
                 const div = document.createElement('div');
-                div.className = 'flex justify-between items-center bg-gray-50 p-2 rounded';
+                div.className = 'flex justify-between items-center bg-gray-50 p-2 rounded mb-2 shadow-sm';
                 div.innerHTML = `
                     <span class="font-medium">Pregunta ${ans.pregunta}</span>
-                    <span class="px-2 py-1 bg-indigo-100 text-indigo-800 rounded">${ans.respuesta}</span>
+                    <span class="px-2 py-1 bg-indigo-100 text-indigo-800 rounded font-bold">${ans.respuesta}</span>
                 `;
                 answersEl.appendChild(div);
             });
+        } else if (data.extracted_answers && data.extracted_answers.texto_completo) {
+            answersEl.innerHTML = `
+                <div class="bg-gray-50 p-3 rounded shadow-sm">
+                    <p class="text-sm text-gray-700 font-medium mb-1">Texto detectado (${data.extracted_answers.palabras} palabras)</p>
+                    <p class="text-xs text-gray-500 line-clamp-3">${data.extracted_answers.texto_completo}</p>
+                </div>
+            `;
         } else {
-            answersEl.innerHTML = '<p class="text-gray-500 text-sm">No se detectaron respuestas</p>';
+            answersEl.innerHTML = '<p class="text-gray-500 text-sm italic">No se detectaron respuestas/resultados</p>';
         }
 
         // Imagen

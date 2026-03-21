@@ -14,8 +14,8 @@
     <!-- Filtros -->
     <div class="bg-white rounded-xl shadow-lg p-4 mb-6">
         <div class="flex flex-col md:flex-row gap-4">
-            <select id="filter-curso" class="p-3 border rounded-lg" onchange="loadExams()">
-                <option value="">Todos los cursos</option>
+            <select id="filter-seccion" class="p-3 border rounded-lg" onchange="loadExams()">
+                <option value="">Todas las secciones</option>
             </select>
             <select id="filter-estado" class="p-3 border rounded-lg" onchange="loadExams()">
                 <option value="">Todos los estados</option>
@@ -32,8 +32,7 @@
             <thead class="bg-gray-50">
                 <tr>
                     <th class="text-left py-4 px-6 text-gray-600">Título</th>
-                    <th class="text-left py-4 px-6 text-gray-600">Curso</th>
-                    <th class="text-left py-4 px-6 text-gray-600">Estudiante</th>
+                    <th class="text-left py-4 px-6 text-gray-600">Sección</th>
                     <th class="text-left py-4 px-6 text-gray-600">Estado</th>
                     <th class="text-left py-4 px-6 text-gray-600">Nota</th>
                     <th class="text-left py-4 px-6 text-gray-600">Fecha</th>
@@ -64,24 +63,28 @@
 
 {% block extra_js %}
 <script>
-    async function loadCoursesForFilter() {
-        const res = await fetch('/api/cursos');
-        const cursos = await res.json();
-        const select = document.getElementById('filter-curso');
-        cursos.forEach(c => {
-            const opt = document.createElement('option');
-            opt.value = c.id;
-            opt.textContent = `${c.codigo} - ${c.nombre}`;
-            select.appendChild(opt);
-        });
+    async function loadSeccionesForFilter() {
+        try {
+            const res = await fetch('/api/secciones');
+            const secciones = await res.json();
+            const select = document.getElementById('filter-seccion');
+            secciones.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = s.nombre_completo;
+                select.appendChild(opt);
+            });
+        } catch (e) {
+            console.error('Error cargando secciones', e);
+        }
     }
 
     async function loadExams() {
-        const cursoId = document.getElementById('filter-curso').value;
+        const seccionId = document.getElementById('filter-seccion').value;
         const estado = document.getElementById('filter-estado').value;
 
         let url = '/api/examenes?';
-        if (cursoId) url += `curso_id=${cursoId}&`;
+        if (seccionId) url += `seccion_id=${seccionId}&`;
         if (estado) url += `estado=${estado}`;
 
         const res = await fetch(url);
@@ -96,8 +99,7 @@
         tbody.innerHTML = examenes.map(e => `
         <tr class="border-b hover:bg-gray-50">
             <td class="py-4 px-6 font-medium">${e.titulo}</td>
-            <td class="py-4 px-6">${e.curso?.nombre || '-'}</td>
-            <td class="py-4 px-6">${e.estudiante ? e.estudiante.nombre + ' ' + e.estudiante.apellido : '-'}</td>
+            <td class="py-4 px-6">${e.seccion?.nombre_completo || '-'}</td>
             <td class="py-4 px-6">
                 <span class="px-2 py-1 rounded-full text-xs font-medium ${e.estado === 'revisado' ? 'bg-green-100 text-green-800' : e.estado === 'procesado' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}">${e.estado}</span>
             </td>
@@ -115,20 +117,62 @@
         const res = await fetch(`/api/examenes/${id}`);
         const e = await res.json();
 
+        let preguntasHtml = '';
+        if (e.preguntas && e.preguntas.length > 0) {
+            preguntasHtml = '<div class="mt-4"><h4 class="font-bold text-gray-700 mb-2">Correcciones:</h4><div class="space-y-2">';
+            e.preguntas.forEach(r => {
+                const esMulti = r.respuesta_correcta !== undefined && r.respuesta_correcta !== null;
+                const estaBien = esMulti ? (r.respuesta_estudiante === r.respuesta_correcta) : (r.puntos_obtenidos >= r.puntos / 2);
+                
+                preguntasHtml += `<div class="bg-gray-50 border-l-4 ${estaBien ? 'border-green-500' : 'border-red-500'} p-3 rounded shadow-sm">`;
+                
+                if (esMulti) {
+                    preguntasHtml += `
+                        <div class="flex justify-between items-center w-full">
+                            <span class="font-medium text-gray-800">
+                                <i class="fas ${estaBien ? 'fa-check text-green-500' : 'fa-times text-red-500'} mr-2"></i>
+                                P${r.numero}. ${r.respuesta_estudiante ? `Respondió: <strong class="${estaBien ? 'text-green-600' : 'text-red-500 line-through'}">${r.respuesta_estudiante}</strong>` : '<span class="text-gray-400 italic">No respondida</span>'}
+                            </span>
+                            <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-bold">
+                                Correcta: ${r.respuesta_correcta}
+                            </span>
+                        </div>
+                    `;
+                } else {
+                    preguntasHtml += `
+                        <div class="w-full">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="font-medium text-gray-800">
+                                    <i class="fas ${estaBien ? 'fa-check text-green-500' : 'fa-times text-red-500'} mr-2"></i>
+                                    P${r.numero}. <span class="text-xs text-gray-500 font-normal">(${r.puntos_obtenidos}/${r.puntos} pts)</span>
+                                </span>
+                                <span class="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
+                                    Coincidencia: ${r.coincidencias || 0}%
+                                </span>
+                            </div>
+                            <p class="text-xs text-gray-500 truncate">Esperadas: <span class="font-medium text-gray-700">${r.respuesta_esperada}</span></p>
+                        </div>
+                    `;
+                }
+                preguntasHtml += '</div>';
+            });
+            preguntasHtml += '</div></div>';
+        }
+
         document.getElementById('exam-detail').innerHTML = `
         <div class="space-y-4">
             <div class="flex justify-between">
                 <div><strong>Título:</strong> ${e.titulo}</div>
                 <span class="px-3 py-1 rounded-full ${e.estado === 'revisado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${e.estado}</span>
             </div>
-            <div><strong>Curso:</strong> ${e.curso?.nombre || '-'}</div>
-            <div><strong>Estudiante:</strong> ${e.estudiante ? e.estudiante.nombre + ' ' + e.estudiante.apellido : 'No identificado'}</div>
+            <div><strong>Sección:</strong> ${e.seccion?.nombre_completo || '-'}</div>
             <div><strong>Nota:</strong> <span class="text-2xl font-bold ${e.nota_final >= 7 ? 'text-green-600' : e.nota_final >= 5 ? 'text-yellow-600' : 'text-red-600'}">${e.nota_final || '-'}</span> / 10</div>
             <div><strong>Fecha:</strong> ${new Date(e.fecha_escaneo).toLocaleString()}</div>
             <div><strong>OCR:</strong> Confianza ${(e.confianza_ocr || 0).toFixed(1)}%</div>
-            <div><strong>Texto Extraído:</strong></div>
+            ${preguntasHtml}
+            <div class="mt-4 border-t pt-4"><strong>Texto Extraído (Crudo):</strong></div>
             <pre class="bg-gray-50 p-3 rounded text-sm whitespace-pre-wrap max-h-40 overflow-y-auto">${e.texto_ocr || 'Sin texto'}</pre>
-            ${e.imagen_path ? `<div><img src="${e.imagen_path}" class="w-full rounded-lg mt-2"></div>` : ''}
+            ${e.imagen_path ? `<div class="mt-4 border-t pt-4"><img src="${e.imagen_path}" class="w-full rounded-lg mt-2 cursor-pointer hover:opacity-90" onclick="window.open('${e.imagen_path}', '_blank')"></div>` : ''}
         </div>
     `;
         document.getElementById('exam-modal').classList.remove('hidden');
@@ -146,7 +190,7 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        loadCoursesForFilter();
+        loadSeccionesForFilter();
         loadExams();
     });
 </script>

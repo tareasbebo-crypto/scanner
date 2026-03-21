@@ -7,8 +7,7 @@ Sistema web para profesores que permite escanear y revisar exámenes/notas usand
 - 📷 Escaneo con Cámara
 - 🔍 OCR Automático con Tesseract
 - ✅ Calificación Automática con Plantillas
-- 👥 Gestión de Estudiantes
-- 📚 Gestión de Cursos
+- 🏫 Gestión de Secciones (Años y Clases)
 - 📊 Dashboard con Estadísticas
 - 📥 Exportación CSV/Excel
 - 📱 PWA (Funciona Offline)
@@ -45,25 +44,13 @@ Abrir: http://localhost:5000
 En el SQL Editor de Supabase, ejecutar:
 ```sql
 -- Crear tablas
-CREATE TABLE IF NOT EXISTS estudiantes (
+CREATE TABLE IF NOT EXISTS secciones (
     id SERIAL PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL,
-    apellido VARCHAR(100) NOT NULL,
-    email VARCHAR(120) UNIQUE NOT NULL,
-    codigo VARCHAR(20) UNIQUE NOT NULL,
-    carrera VARCHAR(100),
-    activo BOOLEAN DEFAULT TRUE,
-    fecha_creacion TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS cursos (
-    id SERIAL PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL,
-    codigo VARCHAR(20) UNIQUE NOT NULL,
-    descripcion TEXT,
+    asignatura VARCHAR(100) NOT NULL,
+    grado VARCHAR(50) NOT NULL,
+    letra VARCHAR(10) NOT NULL,
+    lapso VARCHAR(20),
     profesor VARCHAR(100),
-    anno INTEGER DEFAULT EXTRACT(YEAR FROM NOW()),
-    periodo VARCHAR(20),
     activo BOOLEAN DEFAULT TRUE,
     fecha_creacion TIMESTAMP DEFAULT NOW()
 );
@@ -72,8 +59,10 @@ CREATE TABLE IF NOT EXISTS plantillas (
     id SERIAL PRIMARY KEY,
     nombre VARCHAR(100) NOT NULL,
     descripcion TEXT,
-    curso_id INTEGER REFERENCES cursos(id),
+    seccion_id INTEGER REFERENCES secciones(id),
+    tipo_examen VARCHAR(20) DEFAULT 'multiple_choice',
     respuestas_correctas TEXT,
+    preguntas_texto TEXT,
     puntaje_total FLOAT DEFAULT 10,
     activa BOOLEAN DEFAULT TRUE,
     fecha_creacion TIMESTAMP DEFAULT NOW()
@@ -83,8 +72,7 @@ CREATE TABLE IF NOT EXISTS examenes (
     id SERIAL PRIMARY KEY,
     titulo VARCHAR(200) NOT NULL,
     descripcion TEXT,
-    curso_id INTEGER REFERENCES cursos(id),
-    estudiante_id INTEGER REFERENCES estudiantes(id),
+    seccion_id INTEGER REFERENCES secciones(id),
     plantilla_id INTEGER REFERENCES plantillas(id),
     imagen_path VARCHAR(500),
     texto_ocr TEXT,
@@ -98,28 +86,17 @@ CREATE TABLE IF NOT EXISTS examenes (
 
 CREATE TABLE IF NOT EXISTS preguntas (
     id SERIAL PRIMARY KEY,
-    examen_id INTEGER REFERENCES examenes(id),
+    examen_id INTEGER REFERENCES examenes(id) ON DELETE CASCADE,
     plantilla_id INTEGER REFERENCES plantillas(id),
     numero INTEGER NOT NULL,
-    texto TEXT,
+    tipo VARCHAR(20) DEFAULT 'multiple_choice',
     respuesta_estudiante VARCHAR(10),
     respuesta_correcta VARCHAR(10),
+    respuesta_texto TEXT,
+    respuesta_esperada TEXT,
+    coincidencias FLOAT,
     puntos FLOAT DEFAULT 0,
     puntos_obtenidos FLOAT DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS notas (
-    id SERIAL PRIMARY KEY,
-    estudiante_id INTEGER REFERENCES estudiantes(id),
-    curso_id INTEGER REFERENCES cursos(id),
-    examen_id INTEGER REFERENCES examenes(id),
-    tipo VARCHAR(50),
-    descripcion VARCHAR(200),
-    nota FLOAT NOT NULL,
-    nota_maxima FLOAT DEFAULT 10,
-    porcentaje FLOAT,
-    fecha_nota TIMESTAMP DEFAULT NOW(),
-    observaciones TEXT
 );
 
 CREATE TABLE IF NOT EXISTS configuracion (
@@ -129,7 +106,7 @@ CREATE TABLE IF NOT EXISTS configuracion (
     descripcion VARCHAR(200)
 );
 ```
-
+passwordercopys12
 ### 3. Configurar Render
 1. Crear cuenta en https://render.com
 2. New Web Service > conectar repositorio GitHub
@@ -156,14 +133,13 @@ CREATE TABLE IF NOT EXISTS configuracion (
 ## Uso del Sistema
 
 ### 1. Configuración Inicial
-- Crear cursos desde "Cursos"
-- Registrar estudiantes desde "Estudiantes"
+- Crear secciones (clases y grados) desde "Secciones"
 - Crear plantillas con respuestas correctas
 
 ### 2. Escanear Exámenes
 - Ir a "Escanear"
 - Seleccionar cámara o subir imagen
-- Elegir curso y plantilla
+- Elegir sección y plantilla
 - Procesar
 
 ### 3. Revisar Resultados

@@ -1,6 +1,7 @@
 """
-GradeScanner - Flask Application
-Servidor principal de la aplicación de revisión de notas
+GradeScanner - Flask Application (Simplified)
+Sistema simplificado de examenes con plantillas
+Solo examenes: permite registrar plantillas (opcion multiple y opcion libre)
 """
 
 import os
@@ -13,7 +14,7 @@ from werkzeug.utils import secure_filename
 
 from database import db, init_app
 from config import get_config
-from models import Estudiante, Curso, Examen, Plantilla, Pregunta, Nota, Configuracion
+from models import Examen, Plantilla, Pregunta, Configuracion, Seccion
 from ocr_engine import OCREngine
 
 # Crear aplicación con configuración
@@ -64,16 +65,10 @@ def scan_page():
     return render_template('scan.html')
 
 
-@app.route('/students')
-def students_page():
-    """Página de gestión de estudiantes"""
-    return render_template('students.html')
-
-
-@app.route('/courses')
-def courses_page():
-    """Página de gestión de cursos"""
-    return render_template('courses.html')
+@app.route('/secciones')
+def secciones_page():
+    """Página de gestión de secciones"""
+    return render_template('secciones.html')
 
 
 @app.route('/exams')
@@ -88,122 +83,64 @@ def templates_page():
     return render_template('templates.html')
 
 
-@app.route('/reports')
-def reports_page():
-    """Página de reportes"""
-    return render_template('reports.html')
+# ==================== API: SECCIONES ====================
+
+@app.route('/api/secciones', methods=['GET'])
+def get_secciones():
+    """Obtiene todas las secciones"""
+    secciones = Seccion.query.filter_by(activo=True).all()
+    return jsonify([s.to_dict() for s in secciones])
 
 
-# ==================== API: ESTUDIANTES ====================
-
-@app.route('/api/estudiantes', methods=['GET'])
-def get_estudiantes():
-    """Obtiene todos los estudiantes"""
-    estudiantes = Estudiante.query.filter_by(activo=True).all()
-    return jsonify([e.to_dict() for e in estudiantes])
-
-
-@app.route('/api/estudiantes', methods=['POST'])
-def create_estudiante():
-    """Crea un nuevo estudiante"""
+@app.route('/api/secciones', methods=['POST'])
+def create_seccion():
+    """Crea una nueva sección"""
     data = request.get_json()
     
-    estudiante = Estudiante(
-        nombre=data['nombre'],
-        apellido=data['apellido'],
-        email=data['email'],
-        codigo=data['codigo'],
-        carrera=data.get('carrera', '')
+    seccion = Seccion(
+        asignatura=data['asignatura'],
+        grado=data['grado'],
+        letra=data['letra'],
+        lapso=data.get('lapso', ''),
+        profesor=data.get('profesor', '')
     )
     
-    db.session.add(estudiante)
+    db.session.add(seccion)
     db.session.commit()
     
-    return jsonify(estudiante.to_dict()), 201
+    return jsonify(seccion.to_dict()), 201
 
 
-@app.route('/api/estudiantes/<int:id>', methods=['GET'])
-def get_estudiante(id):
-    """Obtiene un estudiante por ID"""
-    estudiante = Estudiante.query.get_or_404(id)
-    return jsonify(estudiante.to_dict())
+@app.route('/api/secciones/<int:id>', methods=['GET'])
+def get_seccion(id):
+    """Obtiene una sección por ID"""
+    seccion = Seccion.query.get_or_404(id)
+    return jsonify(seccion.to_dict())
 
 
-@app.route('/api/estudiantes/<int:id>', methods=['PUT'])
-def update_estudiante(id):
-    """Actualiza un estudiante"""
-    estudiante = Estudiante.query.get_or_404(id)
+@app.route('/api/secciones/<int:id>', methods=['PUT'])
+def update_seccion(id):
+    """Actualiza una sección"""
+    seccion = Seccion.query.get_or_404(id)
     data = request.get_json()
     
-    estudiante.nombre = data.get('nombre', estudiante.nombre)
-    estudiante.apellido = data.get('apellido', estudiante.apellido)
-    estudiante.email = data.get('email', estudiante.email)
-    estudiante.codigo = data.get('codigo', estudiante.codigo)
-    estudiante.carrera = data.get('carrera', estudiante.carrera)
+    seccion.asignatura = data.get('asignatura', seccion.asignatura)
+    seccion.grado = data.get('grado', seccion.grado)
+    seccion.letra = data.get('letra', seccion.letra)
+    seccion.lapso = data.get('lapso', seccion.lapso)
+    seccion.profesor = data.get('profesor', seccion.profesor)
     
     db.session.commit()
-    return jsonify(estudiante.to_dict())
+    return jsonify(seccion.to_dict())
 
 
-@app.route('/api/estudiantes/<int:id>', methods=['DELETE'])
-def delete_estudiante(id):
-    """Elimina (desactiva) un estudiante"""
-    estudiante = Estudiante.query.get_or_404(id)
-    estudiante.activo = False
+@app.route('/api/secciones/<int:id>', methods=['DELETE'])
+def delete_seccion(id):
+    """Elimina (desactiva) una sección"""
+    seccion = Seccion.query.get_or_404(id)
+    seccion.activo = False
     db.session.commit()
-    return jsonify({'message': 'Estudiante eliminado'})
-
-
-# ==================== API: CURSOS ====================
-
-@app.route('/api/cursos', methods=['GET'])
-def get_cursos():
-    """Obtiene todos los cursos"""
-    cursos = Curso.query.filter_by(activo=True).all()
-    return jsonify([c.to_dict() for c in cursos])
-
-
-@app.route('/api/cursos', methods=['POST'])
-def create_curso():
-    """Crea un nuevo curso"""
-    data = request.get_json()
-    
-    curso = Curso(
-        nombre=data['nombre'],
-        codigo=data['codigo'],
-        descripcion=data.get('descripcion', ''),
-        profesor=data.get('profesor', ''),
-        anno=data.get('anno', datetime.now().year),
-        periodo=data.get('periodo', '')
-    )
-    
-    db.session.add(curso)
-    db.session.commit()
-    
-    return jsonify(curso.to_dict()), 201
-
-
-@app.route('/api/cursos/<int:id>', methods=['GET'])
-def get_curso(id):
-    """Obtiene un curso por ID"""
-    curso = Curso.query.get_or_404(id)
-    return jsonify(curso.to_dict())
-
-
-@app.route('/api/cursos/<int:id>', methods=['PUT'])
-def update_curso(id):
-    """Actualiza un curso"""
-    curso = Curso.query.get_or_404(id)
-    data = request.get_json()
-    
-    curso.nombre = data.get('nombre', curso.nombre)
-    curso.codigo = data.get('codigo', curso.codigo)
-    curso.descripcion = data.get('descripcion', curso.descripcion)
-    curso.profesor = data.get('profesor', curso.profesor)
-    curso.periodo = data.get('periodo', curso.periodo)
-    
-    db.session.commit()
-    return jsonify(curso.to_dict())
+    return jsonify({'message': 'Sección eliminada'})
 
 
 # ==================== API: PLANTILLAS ====================
@@ -211,7 +148,14 @@ def update_curso(id):
 @app.route('/api/plantillas', methods=['GET'])
 def get_plantillas():
     """Obtiene todas las plantillas"""
-    plantillas = Plantilla.query.filter_by(activa=True).all()
+    seccion_id = request.args.get('seccion_id', type=int)
+    
+    query = Plantilla.query.filter_by(activa=True)
+    
+    if seccion_id:
+        query = query.filter_by(seccion_id=seccion_id)
+    
+    plantillas = query.all()
     return jsonify([p.to_dict() for p in plantillas])
 
 
@@ -220,13 +164,23 @@ def create_plantilla():
     """Crea una nueva plantilla"""
     data = request.get_json()
     
-    respuestas = json.dumps(data.get('respuestas_correctas', []))
+    tipo_examen = data.get('tipo_examen', 'multiple_choice')
+    
+    # Procesar según el tipo
+    if tipo_examen == 'multiple_choice':
+        respuestas = json.dumps(data.get('respuestas_correctas', []))
+        preguntas_texto = None
+    else:  # free_response
+        respuestas = None
+        preguntas_texto = json.dumps(data.get('preguntas_texto', []))
     
     plantilla = Plantilla(
         nombre=data['nombre'],
         descripcion=data.get('descripcion', ''),
-        curso_id=data['curso_id'],
+        seccion_id=data.get('seccion_id'),
+        tipo_examen=tipo_examen,
         respuestas_correctas=respuestas,
+        preguntas_texto=preguntas_texto,
         puntaje_total=data.get('puntaje_total', 10)
     )
     
@@ -241,6 +195,42 @@ def get_plantilla(id):
     """Obtiene una plantilla por ID"""
     plantilla = Plantilla.query.get_or_404(id)
     return jsonify(plantilla.to_dict())
+
+
+@app.route('/api/plantillas/<int:id>', methods=['PUT'])
+def update_plantilla(id):
+    """Actualiza una plantilla"""
+    plantilla = Plantilla.query.get_or_404(id)
+    data = request.get_json()
+    
+    plantilla.nombre = data.get('nombre', plantilla.nombre)
+    plantilla.descripcion = data.get('descripcion', plantilla.descripcion)
+    if 'seccion_id' in data:
+        plantilla.seccion_id = data['seccion_id']
+    
+    if 'tipo_examen' in data:
+        plantilla.tipo_examen = data['tipo_examen']
+        if data['tipo_examen'] == 'multiple_choice':
+            plantilla.respuestas_correctas = json.dumps(data.get('respuestas_correctas', []))
+            plantilla.preguntas_texto = None
+        else:
+            plantilla.preguntas_texto = json.dumps(data.get('preguntas_texto', []))
+            plantilla.respuestas_correctas = None
+    
+    if 'puntaje_total' in data:
+        plantilla.puntaje_total = data['puntaje_total']
+    
+    db.session.commit()
+    return jsonify(plantilla.to_dict())
+
+
+@app.route('/api/plantillas/<int:id>', methods=['DELETE'])
+def delete_plantilla(id):
+    """Elimina (desactiva) una plantilla"""
+    plantilla = Plantilla.query.get_or_404(id)
+    plantilla.activa = False
+    db.session.commit()
+    return jsonify({'message': 'Plantilla eliminada'})
 
 
 # ==================== API: EXÁMENES Y ESCANEO ====================
@@ -261,49 +251,55 @@ def scan_examen():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
-        # Datos adicionales del formulario
-        curso_id = request.form.get('curso_id', type=int)
         titulo = request.form.get('titulo', 'Examen sin título')
+        seccion_id = request.form.get('seccion_id', type=int)
         plantilla_id = request.form.get('plantilla_id', type=int)
         
         # Procesar OCR
         try:
-            # Obtener respuestas correctas si hay plantilla
-            correct_answers = []
+            # Obtener plantilla
+            plantilla = None
+            tipo_examen = 'multiple_choice'
             if plantilla_id:
                 plantilla = Plantilla.query.get(plantilla_id)
-                if plantilla and plantilla.respuestas_correctas:
-                    correct_answers = json.loads(plantilla.respuestas_correctas)
+                if plantilla:
+                    tipo_examen = plantilla.tipo_examen
             
             # Procesar imagen
             result = ocr_engine.extract_text_with_confidence(filepath)
-            extracted_answers = ocr_engine.extract_answers(result['text'])
-            student_code = ocr_engine.detect_student_code(result['text'])
+            
+            # Extraer respuestas según el tipo de plantilla
+            if tipo_examen == 'multiple_choice':
+                extracted_answers = ocr_engine.extract_answers(result['text'])
+            else:
+                # Para opción libre, extraer texto completo
+                extracted_answers = ocr_engine.extract_free_text(result['text'])
             
             # Crear examen en la base de datos
             examen = Examen(
                 titulo=titulo,
-                curso_id=curso_id,
+                seccion_id=seccion_id,
                 plantilla_id=plantilla_id,
                 imagen_path=f"/uploads/{filename}",
                 texto_ocr=result['text'],
                 confianza_ocr=result['confidence'],
-                estado='procesado' if correct_answers else 'pendiente'
+                estado='procesado' if plantilla else 'pendiente'
             )
-            
-            # Buscar estudiante por código
-            if student_code:
-                estudiante = Estudiante.query.filter_by(codigo=student_code).first()
-                if estudiante:
-                    examen.estudiante_id = estudiante.id
             
             db.session.add(examen)
             db.session.commit()
             
-            # Calificar si hay respuestas correctas
+            # Calificar si hay plantilla
             grade_result = None
-            if correct_answers:
-                grade_result = ocr_engine.grade_answers(extracted_answers, correct_answers)
+            if plantilla:
+                if tipo_examen == 'multiple_choice':
+                    correct_answers = json.loads(plantilla.respuestas_correctas) if plantilla.respuestas_correctas else []
+                    grade_result = ocr_engine.grade_answers(extracted_answers, correct_answers)
+                else:
+                    # Opción libre - grading por palabras clave
+                    preguntas = json.loads(plantilla.preguntas_texto) if plantilla.preguntas_texto else []
+                    grade_result = ocr_engine.grade_free_response(extracted_answers, preguntas)
+                
                 examen.nota_final = grade_result['nota']
                 examen.estado = 'revisado'
                 
@@ -313,8 +309,12 @@ def scan_examen():
                         examen_id=examen.id,
                         plantilla_id=plantilla_id,
                         numero=r['pregunta'],
-                        respuesta_estudiante=r['respuesta_estudiante'],
-                        respuesta_correcta=r['respuesta_correcta'],
+                        tipo=tipo_examen,
+                        respuesta_estudiante=r.get('respuesta_estudiante'),
+                        respuesta_correcta=r.get('respuesta_correcta'),
+                        respuesta_texto=r.get('respuesta_texto'),
+                        respuesta_esperada=r.get('respuesta_esperada'),
+                        coincidencias=r.get('coincidencias'),
                         puntos=r['puntos'],
                         puntos_obtenidos=r['puntos_obtenidos']
                     )
@@ -330,7 +330,6 @@ def scan_examen():
                     'words': result['words']
                 },
                 'extracted_answers': extracted_answers,
-                'student_code': student_code,
                 'grade': grade_result
             })
             
@@ -343,13 +342,16 @@ def scan_examen():
 @app.route('/api/examenes', methods=['GET'])
 def get_examenes():
     """Obtiene todos los exámenes"""
-    curso_id = request.args.get('curso_id', type=int)
+    seccion_id = request.args.get('seccion_id', type=int)
+    plantilla_id = request.args.get('plantilla_id', type=int)
     estado = request.args.get('estado')
     
     query = Examen.query
     
-    if curso_id:
-        query = query.filter_by(curso_id=curso_id)
+    if seccion_id:
+        query = query.filter_by(seccion_id=seccion_id)
+    if plantilla_id:
+        query = query.filter_by(plantilla_id=plantilla_id)
     if estado:
         query = query.filter_by(estado=estado)
     
@@ -361,7 +363,14 @@ def get_examenes():
 def get_examen(id):
     """Obtiene un examen por ID"""
     examen = Examen.query.get_or_404(id)
-    return jsonify(examen.to_dict())
+    
+    # Obtener preguntas del examen
+    preguntas = Pregunta.query.filter_by(examen_id=id).all()
+    
+    result = examen.to_dict()
+    result['preguntas'] = [p.to_dict() for p in preguntas]
+    
+    return jsonify(result)
 
 
 @app.route('/api/examenes/<int:id>', methods=['PUT'])
@@ -384,46 +393,22 @@ def update_examen(id):
     return jsonify(examen.to_dict())
 
 
-# ==================== API: NOTAS ====================
-
-@app.route('/api/notas', methods=['GET'])
-def get_notas():
-    """Obtiene las notas"""
-    estudiante_id = request.args.get('estudiante_id', type=int)
-    curso_id = request.args.get('curso_id', type=int)
-    
-    query = Nota.query
-    
-    if estudiante_id:
-        query = query.filter_by(estudiante_id=estudiante_id)
-    if curso_id:
-        query = query.filter_by(curso_id=curso_id)
-    
-    notas = query.order_by(Nota.fecha_nota.desc()).all()
-    return jsonify([n.to_dict() for n in notas])
-
-
-@app.route('/api/notas', methods=['POST'])
-def create_nota():
-    """Crea una nueva nota"""
-    data = request.get_json()
-    
-    nota = Nota(
-        estudiante_id=data['estudiante_id'],
-        curso_id=data['curso_id'],
-        examen_id=data.get('examen_id'),
-        tipo=data.get('tipo', 'examen'),
-        descripcion=data.get('descripcion', ''),
-        nota=data['nota'],
-        nota_maxima=data.get('nota_maxima', 10),
-        porcentaje=data.get('porcentaje'),
-        observaciones=data.get('observaciones', '')
-    )
-    
-    db.session.add(nota)
+@app.route('/api/examenes/<int:id>', methods=['DELETE'])
+def delete_examen(id):
+    """Elimina un examen"""
+    examen = Examen.query.get_or_404(id)
+    db.session.delete(examen)
     db.session.commit()
-    
-    return jsonify(nota.to_dict()), 201
+    return jsonify({'message': 'Examen eliminado'})
+
+
+# ==================== API: PREGUNTAS ====================
+
+@app.route('/api/preguntas/examen/<int:examen_id>', methods=['GET'])
+def get_preguntas_examen(examen_id):
+    """Obtiene las preguntas de un examen"""
+    preguntas = Pregunta.query.filter_by(examen_id=examen_id).order_by(Pregunta.numero).all()
+    return jsonify([p.to_dict() for p in preguntas])
 
 
 # ==================== API: ESTADÍSTICAS ====================
@@ -431,19 +416,15 @@ def create_nota():
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     """Obtiene estadísticas del sistema"""
-    curso_id = request.args.get('curso_id', type=int)
     
-    # Contar estudiantes
-    total_estudiantes = Estudiante.query.filter_by(activo=True).count()
+    # Contar secciones
+    total_secciones = Seccion.query.filter_by(activo=True).count()
     
-    # Contar cursos
-    total_cursos = Curso.query.filter_by(activo=True).count()
+    # Contar plantillas
+    total_plantillas = Plantilla.query.filter_by(activa=True).count()
     
     # Contar exámenes
-    query = Examen.query
-    if curso_id:
-        query = query.filter_by(curso_id=curso_id)
-    total_examenes = query.count()
+    total_examenes = Examen.query.count()
     
     # Exámenes por estado
     examen_estados = db.session.query(
@@ -462,8 +443,8 @@ def get_stats():
     ).limit(10).all()
     
     return jsonify({
-        'total_estudiantes': total_estudiantes,
-        'total_cursos': total_cursos,
+        'total_secciones': total_secciones,
+        'total_plantillas': total_plantillas,
         'total_examenes': total_examenes,
         'examenes_por_estado': {e[0]: e[1] for e in examen_estados},
         'nota_promedio': round(float(notas_promedio), 2),
@@ -496,22 +477,3 @@ def uploaded_file(filename):
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': 'Recurso no encontrado'}), 404
-
-
-@app.errorhandler(500)
-def internal_error(error):
-    db.session.rollback()
-    return jsonify({'error': 'Error interno del servidor'}), 500
-
-
-# ==================== MAIN ====================
-
-if __name__ == '__main__':
-    print("=" * 50)
-    print("  GradeScanner - Sistema de Revisión de Notas")
-    print("=" * 50)
-    print(f"  Entorno: {config.ENV}")
-    print(f"  Base de datos: {'Supabase' if config.USE_SUPABASE else 'SQLite'}")
-    print(f"  Servidor iniciado en http://localhost:5000")
-    print("=" * 50)
-    app.run(debug=config.DEBUG, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))

@@ -45,11 +45,11 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Nombre de la Plantilla</label>
                         <input type="text" id="tpl-nombre" required class="w-full p-3 border rounded-lg"
-                            placeholder="Ej: Examen Parcial 1 - Matemáticas">
+                            placeholder="Ej: Evaluación 1 - Matemáticas">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Curso</label>
-                        <select id="tpl-curso" required class="w-full p-3 border rounded-lg"></select>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Sección</label>
+                        <select id="tpl-seccion" required class="w-full p-3 border rounded-lg"></select>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
@@ -57,63 +57,86 @@
                             placeholder="Descripción opcional"></textarea>
                     </div>
 
-                    <!-- Configuración del examen -->
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Configuración del Examen</label>
+                    <!-- Tipo de examen -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Tipo de Examen</label>
                         <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="text-xs text-gray-500">Número de opciones</label>
-                                <select id="tpl-opciones" class="w-full p-2 border rounded-lg"
-                                    onchange="actualizarOpciones()">
-                                    <option value="2">2 opciones (A-B)</option>
-                                    <option value="3">3 opciones (A-C)</option>
-                                    <option value="4" selected>4 opciones (A-D)</option>
-                                    <option value="5">5 opciones (A-E)</option>
-                                    <option value="6">6 opciones (A-F)</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="text-xs text-gray-500">Número de preguntas</label>
-                                <input type="number" id="tpl-num-preguntas" class="w-full p-2 border rounded-lg"
-                                    value="10" min="1" max="100" onchange="generarHelper()">
-                            </div>
+                            <label class="border-2 border-indigo-500 rounded-lg p-3 cursor-pointer bg-indigo-50">
+                                <input type="radio" name="tipo_examen" value="multiple_choice" checked
+                                    onchange="cambiarTipoPlantilla()" class="mr-2">
+                                <i class="fas fa-check-circle text-indigo-600 mr-1"></i>
+                                <span class="font-medium">Opción Múltiple</span>
+                                <p class="text-xs text-gray-500 mt-1">Respuestas A, B, C, D...</p>
+                            </label>
+                            <label class="border-2 border-gray-200 rounded-lg p-3 cursor-pointer hover:bg-gray-50">
+                                <input type="radio" name="tipo_examen" value="free_response"
+                                    onchange="cambiarTipoPlantilla()" class="mr-2">
+                                <i class="fas fa-pen text-gray-600 mr-1"></i>
+                                <span class="font-medium">Opción Libre</span>
+                                <p class="text-xs text-gray-500 mt-1">Respuestas de texto abierto</p>
+                            </label>
                         </div>
                     </div>
 
-                    <!-- Respuestas -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Respuestas Correctas</label>
-                        <div class="bg-gray-50 p-4 rounded-lg border">
-                            <p class="text-xs text-gray-500 mb-3">
-                                Selecciona la respuesta correcta para cada pregunta y los puntos que vale.
-                            </p>
+                    <!-- Configuración del examen (solo múltiple) -->
+                    <div id="config-examen">
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Configuración del Examen</label>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="text-xs text-gray-500">Número de opciones</label>
+                                    <select id="tpl-opciones" class="w-full p-2 border rounded-lg"
+                                        onchange="actualizarOpciones()">
+                                        <option value="2">2 opciones (A-B)</option>
+                                        <option value="VF">Verdadero/Falso (V-F) [Nivel Bachiller]</option>
+                                        <option value="3">3 opciones (A-C)</option>
+                                        <option value="4" selected>4 opciones (A-D)</option>
+                                        <option value="5">5 opciones (A-E)</option>
+                                        <option value="6">6 opciones (A-F)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-500">Número de preguntas</label>
+                                    <input type="number" id="tpl-num-preguntas" class="w-full p-2 border rounded-lg"
+                                        value="10" min="1" max="100" onchange="generarHelper()">
+                                </div>
+                            </div>
+                        </div>
 
-                            <!-- Helper Visual -->
-                            <div id="respuestas-helper" class="space-y-2 max-h-64 overflow-y-auto">
-                                <!-- Se genera dinámicamente -->
+                        <!-- Respuestas -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Respuestas Correctas</label>
+                            <div class="bg-gray-50 p-4 rounded-lg border">
+                                <p class="text-xs text-gray-500 mb-3">
+                                    Selecciona la respuesta correcta para cada pregunta y los puntos que vale.
+                                </p>
+
+                                <!-- Helper Visual -->
+                                <div id="respuestas-helper" class="space-y-2 max-h-64 overflow-y-auto">
+                                    <!-- Se genera dinámicamente -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Vista JSON -->
+                        <div>
+                            <button type="button" onclick="toggleJsonView()"
+                                class="text-sm text-indigo-600 hover:text-indigo-800">
+                                <i class="fas fa-code mr-1"></i>Ver/editar JSON
+                            </button>
+                            <div id="json-view" class="hidden mt-2">
+                                <textarea id="tpl-respuestas" class="w-full p-3 border rounded-lg font-mono text-sm"
+                                    rows="8"></textarea>
                             </div>
                         </div>
                     </div>
-
-                    <!-- Vista JSON -->
-                    <div>
-                        <button type="button" onclick="toggleJsonView()"
-                            class="text-sm text-indigo-600 hover:text-indigo-800">
-                            <i class="fas fa-code mr-1"></i>Ver/editar JSON
-                        </button>
-                        <div id="json-view" class="hidden mt-2">
-                            <textarea id="tpl-respuestas" class="w-full p-3 border rounded-lg font-mono text-sm"
-                                rows="8"></textarea>
-                        </div>
+                    <div class="flex justify-end space-x-3 mt-6">
+                        <button type="button" onclick="closeModal()"
+                            class="px-6 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
+                        <button type="submit"
+                            class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Guardar
+                            Plantilla</button>
                     </div>
-                </div>
-                <div class="flex justify-end space-x-3 mt-6">
-                    <button type="button" onclick="closeModal()"
-                        class="px-6 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
-                    <button type="submit"
-                        class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">Guardar
-                        Plantilla</button>
-                </div>
             </form>
         </div>
     </div>
@@ -128,15 +151,15 @@
 
     const OPCIONES = ['A', 'B', 'C', 'D', 'E', 'F'];
 
-    async function loadCourses() {
-        const res = await fetch('/api/cursos');
-        const cursos = await res.json();
-        const select = document.getElementById('tpl-curso');
-        select.innerHTML = '<option value="">Seleccionar curso...</option>';
-        cursos.forEach(c => {
+    async function loadSecciones() {
+        const res = await fetch('/api/secciones');
+        const secciones = await res.json();
+        const select = document.getElementById('tpl-seccion');
+        select.innerHTML = '<option value="">Seleccionar sección...</option>';
+        secciones.forEach(s => {
             const opt = document.createElement('option');
-            opt.value = c.id;
-            opt.textContent = `${c.codigo} - ${c.nombre}`;
+            opt.value = s.id;
+            opt.textContent = `${s.asignatura} - ${s.grado} ${s.letra} (${s.lapso || '-'})`;
             select.appendChild(opt);
         });
     }
@@ -161,32 +184,55 @@
 
         grid.innerHTML = templates.map(t => {
             let respuestas = [];
+            let isFreeResponse = t.tipo_examen === 'free_response';
+            
             try {
-                respuestas = JSON.parse(t.respuestas_correctas || '[]');
+                respuestas = JSON.parse(isFreeResponse ? (t.preguntas_texto || '[]') : (t.respuestas_correctas || '[]'));
             } catch { }
 
             // Determinar número de opciones
-            const opcionesUsadas = new Set(respuestas.map(r => r.respuesta));
-            let numOpts = 4;
-            if (opcionesUsadas.has('F') || opcionesUsadas.has('E')) numOpts = 6;
-            else if (opcionesUsadas.has('E')) numOpts = 5;
-            else if (opcionesUsadas.has('D')) numOpts = 4;
+            let opcionesHTML = '';
+            if (!isFreeResponse) {
+                const opcionesUsadas = new Set(respuestas.map(r => r.respuesta));
+                if (opcionesUsadas.has('V') || opcionesUsadas.has('F')) {
+                    opcionesHTML = `
+                    <div class="text-sm flex justify-between">
+                        <span class="text-gray-600">Opciones:</span>
+                        <span class="font-medium text-pink-600">Verdadero/Falso</span>
+                    </div>`;
+                } else {
+                    let numOpts = 4;
+                    if (opcionesUsadas.has('F') && !opcionesUsadas.has('V')) numOpts = 6;
+                    else if (opcionesUsadas.has('E')) numOpts = 5;
+                    else if (opcionesUsadas.has('D')) numOpts = 4;
+                    opcionesHTML = `
+                    <div class="text-sm flex justify-between">
+                        <span class="text-gray-600">Opciones:</span>
+                        <span class="font-medium">A-${OPCIONES[numOpts - 1]}</span>
+                    </div>`;
+                }
+            } else {
+                opcionesHTML = `
+                <div class="text-sm flex justify-between">
+                    <span class="text-gray-600">Tipo:</span>
+                    <span class="font-medium text-indigo-600">Texto libre</span>
+                </div>`;
+            }
 
             const totalPuntos = respuestas.reduce((a, r) => a + (r.puntos || 1), 0);
 
             return `
-        <div class="bg-white rounded-xl shadow-lg p-6">
+        <div class="bg-white rounded-xl shadow-lg p-6 relative overflow-hidden">
+            ${isFreeResponse ? '<div class="absolute top-0 right-0 w-2 h-full bg-blue-500"></div>' : '<div class="absolute top-0 right-0 w-2 h-full bg-indigo-500"></div>'}
             <div class="flex justify-between items-start mb-3">
                 <h3 class="font-bold text-lg">${t.nombre}</h3>
                 <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">${respuestas.length} preg</span>
             </div>
             <p class="text-gray-500 text-sm mb-4">${t.descripcion || 'Sin descripción'}</p>
+            <p class="text-indigo-600 text-sm font-medium mb-4"><i class="fas fa-users mr-1"></i> ${t.seccion?.nombre_completo || 'Sin sección'}</p>
             
             <div class="bg-gray-50 rounded-lg p-3 mb-4">
-                <div class="text-sm flex justify-between">
-                    <span class="text-gray-600">Opciones:</span>
-                    <span class="font-medium">A-${OPCIONES[numOpts - 1]}</span>
-                </div>
+                ${opcionesHTML}
                 <div class="text-sm flex justify-between mt-1">
                     <span class="text-gray-600">Puntaje total:</span>
                     <span class="font-bold">${totalPuntos} puntos</span>
@@ -194,14 +240,18 @@
             </div>
             
             <div class="text-sm text-gray-600 mb-4">
-                <strong>Respuestas:</strong>
-                <div class="mt-1 flex flex-wrap gap-1">
-                    ${respuestas.slice(0, 15).map(r => `
-                        <span class="px-2 py-0.5 ${r.puntos > 1 ? 'bg-yellow-100 text-yellow-800' : 'bg-indigo-100 text-indigo-800'} rounded text-xs">
-                            ${r.pregunta}:${r.respuesta}
-                        </span>
+                <strong>Preguntas:</strong>
+                <div class="mt-1 flex flex-col gap-1">
+                    ${respuestas.slice(0, 5).map(r => `
+                        <div class="text-xs border-b pb-1 mb-1">
+                            <span class="font-medium">P${r.pregunta}:</span> 
+                            ${isFreeResponse 
+                                ? (Array.isArray(r.palabras_clave) ? r.palabras_clave.join(', ') : r.palabras_clave || 'Sin palabras clave') 
+                                : r.respuesta}
+                            <span class="text-gray-400 ml-1">(${r.puntos || 1} pts)</span>
+                        </div>
                     `).join('')}
-                    ${respuestas.length > 15 ? `<span class="text-gray-400">+${respuestas.length - 15} más</span>` : ''}
+                    ${respuestas.length > 5 ? `<span class="text-gray-400 mt-1">+${respuestas.length - 5} más</span>` : ''}
                 </div>
             </div>
         </div>
@@ -235,18 +285,27 @@
     }
 
     function actualizarOpciones() {
-        numOpciones = parseInt(document.getElementById('tpl-opciones').value);
+        const val = document.getElementById('tpl-opciones').value;
+        numOpciones = val === 'VF' ? 'VF' : parseInt(val);
         generarHelper();
     }
 
     function generarHelper() {
         numPreguntas = parseInt(document.getElementById('tpl-num-preguntas').value) || 10;
-        numOpciones = parseInt(document.getElementById('tpl-opciones').value);
+        const val = document.getElementById('tpl-opciones').value;
+        numOpciones = val === 'VF' ? 'VF' : parseInt(val);
 
         const container = document.getElementById('respuestas-helper');
-        const optsAvailable = OPCIONES.slice(0, numOpciones);
+        
+        let optsAvailable;
+        if (numOpciones === 'VF') {
+            optsAvailable = ['V', 'F'];
+        } else {
+            optsAvailable = OPCIONES.slice(0, numOpciones);
+        }
 
-        let html = `<div class="grid grid-cols-${Math.min(numOpciones, 4)} gap-2 text-xs text-gray-500 mb-2">`;
+        let cols = numOpciones === 'VF' ? 2 : Math.min(numOpciones, 4);
+        let html = `<div class="grid grid-cols-${cols} gap-2 text-xs text-gray-500 mb-2">`;
         optsAvailable.forEach(o => { html += `<div class="text-center font-bold">${o}</div>`; });
         html += '</div>';
 
@@ -294,31 +353,65 @@
     async function saveTemplate(e) {
         e.preventDefault();
 
-        let respuestas;
-        try {
-            const jsonText = document.getElementById('tpl-respuestas').value;
-            if (!jsonText.trim()) {
-                // Generar desde el helper si está vacío
-                actualizarJsonDesdeHelper();
+        const tipoExamen = document.querySelector('input[name="tipo_examen"]:checked').value;
+        let data;
+
+        if (tipoExamen === 'multiple_choice') {
+            // Multiple choice
+            let respuestas;
+            try {
+                const jsonText = document.getElementById('tpl-respuestas').value;
+                if (!jsonText.trim()) {
+                    actualizarJsonDesdeHelper();
+                }
+                respuestas = JSON.parse(document.getElementById('tpl-respuestas').value || '[]');
+            } catch {
+                Swal.fire('Error', 'El formato JSON de respuestas es inválido', 'error');
+                return;
             }
-            respuestas = JSON.parse(document.getElementById('tpl-respuestas').value || '[]');
-        } catch {
-            Swal.fire('Error', 'El formato JSON de respuestas es inválido', 'error');
-            return;
-        }
 
-        if (respuestas.length === 0) {
-            Swal.fire('Error', 'Debes agregar al menos una respuesta correcta', 'error');
-            return;
-        }
+            if (respuestas.length === 0) {
+                Swal.fire('Error', 'Debes agregar al menos una respuesta correcta', 'error');
+                return;
+            }
 
-        const data = {
-            nombre: document.getElementById('tpl-nombre').value,
-            curso_id: parseInt(document.getElementById('tpl-curso').value),
-            descripcion: document.getElementById('tpl-descripcion').value,
-            respuestas_correctas: respuestas,
-            puntaje_total: respuestas.reduce((a, r) => a + (r.puntos || 1), 0)
-        };
+            data = {
+                nombre: document.getElementById('tpl-nombre').value,
+                seccion_id: parseInt(document.getElementById('tpl-seccion').value) || null,
+                descripcion: document.getElementById('tpl-descripcion').value,
+                tipo_examen: 'multiple_choice',
+                respuestas_correctas: respuestas,
+                puntaje_total: respuestas.reduce((a, r) => a + (r.puntos || 1), 0)
+            };
+        } else {
+            // Free response - get from JSON
+            let preguntas;
+            try {
+                const jsonText = document.getElementById('tpl-respuestas').value;
+                if (!jsonText.trim()) {
+                    Swal.fire('Error', 'Debes agregar las preguntas de respuesta libre', 'error');
+                    return;
+                }
+                preguntas = JSON.parse(jsonText);
+            } catch {
+                Swal.fire('Error', 'El formato JSON de preguntas es inválido', 'error');
+                return;
+            }
+
+            if (preguntas.length === 0) {
+                Swal.fire('Error', 'Debes agregar al menos una pregunta', 'error');
+                return;
+            }
+
+            data = {
+                nombre: document.getElementById('tpl-nombre').value,
+                seccion_id: parseInt(document.getElementById('tpl-seccion').value) || null,
+                descripcion: document.getElementById('tpl-descripcion').value,
+                tipo_examen: 'free_response',
+                preguntas_texto: preguntas,
+                puntaje_total: preguntas.reduce((a, r) => a + (r.puntos || 1), 0)
+            };
+        }
 
         await fetch('/api/plantillas', {
             method: 'POST',
@@ -331,8 +424,26 @@
         Swal.fire('Éxito', 'Plantilla guardada correctamente', 'success');
     }
 
+    function cambiarTipoPlantilla() {
+        const tipo = document.querySelector('input[name="tipo_examen"]:checked').value;
+        const configSection = document.getElementById('config-examen');
+        const respuestasSection = document.getElementById('respuestas-section');
+
+        // Update label styling
+        const labels = document.querySelectorAll('input[name="tipo_examen"]').closest('label');
+        labels.forEach(label => {
+            if (label.querySelector('input').value === tipo) {
+                label.classList.add('border-indigo-500', 'bg-indigo-50');
+                label.classList.remove('border-gray-200');
+            } else {
+                label.classList.remove('border-indigo-500', 'bg-indigo-50');
+                label.classList.add('border-gray-200');
+            }
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
-        loadCourses();
+        loadSecciones();
         loadTemplates();
     });
 </script>

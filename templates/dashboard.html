@@ -14,15 +14,15 @@
     </div>
 
     <!-- Stats Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div class="bg-white rounded-xl shadow-lg p-6">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-gray-500 text-sm">Total Estudiantes</p>
-                    <p id="stat-estudiantes" class="text-3xl font-bold text-gray-900">0</p>
+                    <p class="text-gray-500 text-sm">Secciones</p>
+                    <p id="stat-secciones" class="text-3xl font-bold text-gray-900">0</p>
                 </div>
-                <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center">
-                    <i class="fas fa-users text-xl text-blue-600"></i>
+                <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center">
+                    <i class="fas fa-users text-xl text-green-600"></i>
                 </div>
             </div>
         </div>
@@ -30,14 +30,15 @@
         <div class="bg-white rounded-xl shadow-lg p-6">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-gray-500 text-sm">Total Cursos</p>
-                    <p id="stat-cursos" class="text-3xl font-bold text-gray-900">0</p>
+                    <p class="text-gray-500 text-sm">Total Plantillas</p>
+                    <p id="stat-plantillas" class="text-3xl font-bold text-gray-900">0</p>
                 </div>
-                <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center">
-                    <i class="fas fa-book text-xl text-green-600"></i>
+                <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center">
+                    <i class="fas fa-clipboard-list text-xl text-blue-600"></i>
                 </div>
             </div>
         </div>
+
 
         <div class="bg-white rounded-xl shadow-lg p-6">
             <div class="flex items-center justify-between">
@@ -82,17 +83,13 @@
                     <i class="fas fa-camera text-2xl text-indigo-600 mb-2"></i>
                     <p class="text-indigo-700 font-medium">Escanear Examen</p>
                 </a>
-                <a href="/students" class="bg-blue-50 hover:bg-blue-100 rounded-lg p-4 text-center transition">
-                    <i class="fas fa-user-plus text-2xl text-blue-600 mb-2"></i>
-                    <p class="text-blue-700 font-medium">Nuevo Estudiante</p>
+                <a href="/templates" class="bg-blue-50 hover:bg-blue-100 rounded-lg p-4 text-center transition">
+                    <i class="fas fa-plus-circle text-2xl text-blue-600 mb-2"></i>
+                    <p class="text-blue-700 font-medium">Nueva Plantilla</p>
                 </a>
-                <a href="/courses" class="bg-green-50 hover:bg-green-100 rounded-lg p-4 text-center transition">
-                    <i class="fas fa-plus-circle text-2xl text-green-600 mb-2"></i>
-                    <p class="text-green-700 font-medium">Nuevo Curso</p>
-                </a>
-                <a href="/reports" class="bg-purple-50 hover:bg-purple-100 rounded-lg p-4 text-center transition">
-                    <i class="fas fa-download text-2xl text-purple-600 mb-2"></i>
-                    <p class="text-purple-700 font-medium">Exportar Reportes</p>
+                <a href="/exams" class="bg-green-50 hover:bg-green-100 rounded-lg p-4 text-center transition">
+                    <i class="fas fa-file-alt text-2xl text-green-600 mb-2"></i>
+                    <p class="text-green-700 font-medium">Ver Exámenes</p>
                 </a>
             </div>
         </div>
@@ -108,7 +105,7 @@
                 <thead>
                     <tr class="border-b">
                         <th class="text-left py-3 px-4 text-gray-600 font-medium">Título</th>
-                        <th class="text-left py-3 px-4 text-gray-600 font-medium">Curso</th>
+                        <th class="text-left py-3 px-4 text-gray-600 font-medium">Sección</th>
                         <th class="text-left py-3 px-4 text-gray-600 font-medium">Estado</th>
                         <th class="text-left py-3 px-4 text-gray-600 font-medium">Nota</th>
                         <th class="text-left py-3 px-4 text-gray-600 font-medium">Fecha</th>
@@ -132,8 +129,8 @@
             const data = await response.json();
 
             // Actualizar tarjetas
-            document.getElementById('stat-estudiantes').textContent = data.total_estudiantes;
-            document.getElementById('stat-cursos').textContent = data.total_cursos;
+            document.getElementById('stat-secciones').textContent = data.total_secciones || 0;
+            document.getElementById('stat-plantillas').textContent = data.total_plantillas || 0;
             document.getElementById('stat-examenes').textContent = data.total_examenes;
             document.getElementById('stat-promedio').textContent = data.nota_promedio;
 
@@ -171,7 +168,7 @@
                 tr.className = 'border-b hover:bg-gray-50';
                 tr.innerHTML = `
                     <td class="py-3 px-4">${examen.titulo}</td>
-                    <td class="py-3 px-4">${examen.curso?.nombre || 'Sin curso'}</td>
+                    <td class="py-3 px-4">${examen.seccion?.nombre_completo || 'Sin sección'}</td>
                     <td class="py-3 px-4">
                         <span class="px-2 py-1 rounded-full text-xs font-medium ${examen.estado === 'revisado' ? 'bg-green-100 text-green-800' :
                         examen.estado === 'procesado' ? 'bg-yellow-100 text-yellow-800' :

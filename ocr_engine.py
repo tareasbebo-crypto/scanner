@@ -117,12 +117,12 @@ class OCREngine:
         """Extrae respuestas de opción múltiple del texto reconocido"""
         answers = []
         
-        # Patrones comunes para respuestas (soporta A-F)
+        # Patrones comunes para respuestas (soporta A-F y Verdadero/Falso V/F)
         patterns = [
-            r'(\d+)[\.\):]\s*([A-Fa-f])',  # 1. A, 1) A, 1: A
-            r'preg\.?\s*(\d+)[\.\):]\s*([A-Fa-f])',  # preg. 1 A
-            r'pregunta\s*(\d+)[\.\):]\s*([A-Fa-f])',  # pregunta 1 A
-            r'p\.?\s*(\d+)[\.\):]\s*([A-Fa-f])',  # p. 1 A
+            r'(\d+)[\.\):]\s*([A-Fa-fVv])',  # 1. A, 1) A, 1: A, 1. V, 1. F
+            r'preg\.?\s*(\d+)[\.\):]\s*([A-Fa-fVv])',  # preg. 1 A
+            r'pregunta\s*(\d+)[\.\):]\s*([A-Fa-fVv])',  # pregunta 1 A
+            r'p\.?\s*(\d+)[\.\):]\s*([A-Fa-fVv])',  # p. 1 A
         ]
         
         for pattern in patterns:
