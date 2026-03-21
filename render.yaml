@@ -8,5 +8,5 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: ""  # Asegúrate de poner aquí tu credencial de Supabase en el panel de Render
+        value: ""
     region: ohio

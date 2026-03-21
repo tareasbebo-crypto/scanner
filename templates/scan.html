@@ -640,53 +640,22 @@
             const res = await fetch('/api/ocr/status');
             const data = await res.json();
             const banner = document.getElementById('ocr-status-banner');
-            banner.classList.remove('hidden');
-
+            
             if (data.disponible) {
-                const tieneEsp = data.tiene_espanol;
-                banner.innerHTML = `
-                    <div class="flex items-start gap-3 p-4 rounded-xl border ${tieneEsp ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-300'}">
-                        <i class="fas ${tieneEsp ? 'fa-check-circle text-green-500' : 'fa-exclamation-triangle text-yellow-500'} text-xl mt-0.5"></i>
-                        <div>
-                            <p class="font-semibold ${tieneEsp ? 'text-green-800' : 'text-yellow-800'}">
-                                ${tieneEsp ? '✅ Tesseract OCR listo' : '⚠️ Tesseract instalado pero sin soporte en español'}
-                            </p>
-                            <p class="text-sm mt-1 ${tieneEsp ? 'text-green-600' : 'text-yellow-700'}">
-                                ${data.mensaje}
-                            </p>
-                            ${!tieneEsp ? `
-                            <p class="text-xs mt-2 text-yellow-600">
-                                Para añadir español: descarga <code class="bg-yellow-100 px-1 rounded">spa.traineddata</code> desde 
-                                <a href="https://github.com/tesseract-ocr/tessdata" target="_blank" class="underline">tessdata</a> 
-                                y colócalo en la carpeta <code class="bg-yellow-100 px-1 rounded">tessdata</code> de Tesseract.
-                            </p>` : ''}
-                        </div>
-                    </div>`;
+                // Si funciona en local o en Render, lo quitamos de la vista (o mostramos verde)
+                banner.classList.add('hidden');
             } else {
+                // Modo "Simulación Local" para que siga desarrollando sin atorarse
+                banner.classList.remove('hidden');
                 banner.innerHTML = `
-                    <div class="flex items-start gap-3 p-4 rounded-xl border bg-red-50 border-red-300">
-                        <i class="fas fa-times-circle text-red-500 text-xl mt-0.5"></i>
-                        <div class="flex-1">
-                            <p class="font-semibold text-red-800">❌ Tesseract OCR no está instalado</p>
-                            <p class="text-sm mt-1 text-red-700">Sin Tesseract, el escáner no puede leer el texto de las imágenes.</p>
-                            <div class="mt-3 bg-white rounded-lg p-3 border border-red-200">
-                                <p class="text-sm font-semibold text-gray-700 mb-2">📥 Cómo instalar:</p>
-                                <ol class="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-                                    <li>Descarga el instalador: <a href="https://github.com/UB-Mannheim/tesseract/releases" target="_blank" class="text-indigo-600 underline font-medium">UB-Mannheim Tesseract (GitHub)</a></li>
-                                    <li>Ejecuta el instalador → en "Additional language data" marca <strong>Spanish</strong></li>
-                                    <li>Instala en <code class="bg-gray-100 px-1 rounded text-xs">C:\\Program Files\\Tesseract-OCR\\</code></li>
-                                    <li>Reinicia la aplicación</li>
-                                </ol>
-                            </div>
+                    <div class="flex items-start gap-3 p-3 rounded-lg bg-orange-50 border border-orange-200">
+                        <i class="fas fa-info-circle text-orange-500 mt-0.5"></i>
+                        <div>
+                            <p class="text-sm font-semibold text-orange-800">Modo Desarrollo: OCR Local inactivo</p>
+                            <p class="text-xs mt-1 text-orange-700">Puedes probar el flujo, pero el texto devuelto estará vacío hasta subirlo a Render. (Para uso 100% local, requieres instalación manual de Tesseract).</p>
                         </div>
                     </div>`;
-                // Deshabilitar botón de procesar
-                const btn = document.getElementById('btn-process');
-                if (btn) {
-                    btn.disabled = true;
-                    btn.title = 'Tesseract OCR no está instalado';
-                    btn.classList.add('opacity-50', 'cursor-not-allowed');
-                }
+                // NOTA: Ya no deshabilitamos el botón, le dejamos continuar.
             }
         } catch (e) {
             console.warn('No se pudo verificar estado OCR:', e);
