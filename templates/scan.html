@@ -164,7 +164,11 @@
                     <option value="">Seleccionar sección...</option>
                 </select>
 
-                <label class="block text-sm font-medium text-gray-700 mb-2">Título del examen</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Nombre del Estudiante</label>
+                <input type="text" id="scan-estudiante" class="w-full p-3 border rounded-lg mb-4"
+                    placeholder="Ej: Juan Pérez">
+
+                <label class="block text-sm font-medium text-gray-700 mb-2">Título / Evaluación</label>
                 <input type="text" id="scan-titulo" class="w-full p-3 border rounded-lg mb-4"
                     placeholder="Ej: Evaluación 1">
 
@@ -433,7 +437,8 @@
         }
 
         const seccionId = document.getElementById('scan-seccion').value;
-        const titulo = document.getElementById('scan-titulo').value || 'Examen sin título';
+        const titulo = document.getElementById('scan-titulo').value || 'Evaluación sin título';
+        const nombreEstudiante = document.getElementById('scan-estudiante').value.trim();
         const plantillaId = document.getElementById('scan-plantilla').value;
 
         // Mostrar loading
@@ -449,13 +454,10 @@
 
             const formData = new FormData();
             formData.append('file', blob, 'exam.jpg');
-            if (seccionId) {
-                formData.append('seccion_id', seccionId);
-            }
+            if (seccionId) formData.append('seccion_id', seccionId);
             formData.append('titulo', titulo);
-            if (plantillaId) {
-                formData.append('plantilla_id', plantillaId);
-            }
+            if (nombreEstudiante) formData.append('nombre_estudiante', nombreEstudiante);
+            if (plantillaId) formData.append('plantilla_id', plantillaId);
 
             const result = await fetch('/api/scan', {
                 method: 'POST',
@@ -486,9 +488,12 @@
 
         // Info básica
         document.getElementById('result-title').textContent = data.examen.titulo;
-        document.getElementById('result-student').textContent = data.examen.seccion
-            ? `Sección: ${data.examen.seccion.nombre_completo}`
-            : 'Sección no identificada';
+        
+        // Nombre del estudiante y sección
+        const estudianteNombre = data.examen.nombre_estudiante;
+        const seccionLabel = data.examen.seccion ? `Sección: ${data.examen.seccion.nombre_completo}` : 'Sección no identificada';
+        document.getElementById('result-student').innerHTML = 
+            (estudianteNombre ? `<i class="fas fa-user mr-1 text-indigo-500"></i><strong>${estudianteNombre}</strong> &bull; ` : '') + seccionLabel;
 
         // Estado
         const statusEl = document.getElementById('result-status');
@@ -519,7 +524,7 @@
             data.grade.resultados.forEach(r => {
                 const div = document.createElement('div');
                 const esMulti = r.respuesta_correcta !== undefined && r.respuesta_correcta !== null;
-                const estaBien = esMulti ? r.correcta : (r.puntos_obtenidos >= r.puntos / 2);
+                const estaBien = esMulti ? r.correcta : (r.puntos_obtenidos >= r.puntos * 0.5);
                 
                 div.className = `bg-gray-50 border-l-4 ${estaBien ? 'border-green-500' : 'border-red-500'} p-3 rounded mb-2 shadow-sm`;
 
@@ -536,18 +541,28 @@
                         </div>
                     `;
                 } else {
+                    // Respuesta libre - mostrar por bloque con análisis semántico
+                    const fuenteLabel = r.fuente_analisis === 'bloque' 
+                        ? '<span class="text-xs text-indigo-500 ml-1">(análisis por bloque)</span>'
+                        : '<span class="text-xs text-gray-400 ml-1">(texto completo)</span>';
+                    
                     div.innerHTML = `
                         <div class="w-full">
                             <div class="flex justify-between items-center mb-1">
                                 <span class="font-medium text-gray-800">
-                                    <i class="fas ${estaBien ? 'fa-check text-green-500' : 'fa-times text-red-500'} mr-2"></i>
-                                    P${r.pregunta}. <span class="text-xs text-gray-500 font-normal">(${r.puntos_obtenidos}/${r.puntos} pts)</span>
+                                    <i class="fas ${estaBien ? 'fa-check text-green-500' : 'fa-times text-red-500'} mr-1"></i>
+                                    P${r.pregunta} ${fuenteLabel}
+                                    <span class="text-xs text-gray-500 font-normal">(${r.puntos_obtenidos}/${r.puntos} pts)</span>
                                 </span>
-                                <span class="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
-                                    Coincidencia: ${r.coincidencias}%
+                                <span class="text-xs font-bold px-2 py-1 rounded-full ${r.coincidencias >= 70 ? 'bg-green-100 text-green-700' : r.coincidencias >= 40 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}">
+                                    ${r.coincidencias}% coincidencia
                                 </span>
                             </div>
-                            <p class="text-xs text-gray-500 truncate">Esperadas: <span class="font-medium text-gray-700">${r.respuesta_esperada}</span></p>
+                            <p class="text-xs text-gray-500 mb-1">Esperadas: <span class="font-medium text-gray-700">${r.respuesta_esperada}</span></p>
+                            ${r.palabras_clave_encontradas && r.palabras_clave_encontradas.length > 0 
+                                ? `<p class="text-xs text-green-600"><i class="fas fa-check-circle mr-1"></i>Encontradas: ${r.palabras_clave_encontradas.join(', ')}</p>` 
+                                : ''}
+                            ${r.respuesta_texto ? `<p class="text-xs text-gray-400 mt-1 border-t pt-1 italic line-clamp-2">${r.respuesta_texto}</p>` : ''}
                         </div>
                     `;
                 }

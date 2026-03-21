@@ -83,7 +83,8 @@ class Examen(db.Model):
     __tablename__ = 'examenes'
     
     id = db.Column(db.Integer, primary_key=True)
-    titulo = db.Column(db.String(200), nullable=False) # identificador/nombre estudiante
+    titulo = db.Column(db.String(200), nullable=False)  # identificador/titulo del examen
+    nombre_estudiante = db.Column(db.String(150))         # nombre del alumno que respondio
     descripcion = db.Column(db.Text)
     seccion_id = db.Column(db.Integer, db.ForeignKey('secciones.id'))
     plantilla_id = db.Column(db.Integer, db.ForeignKey('plantillas.id'))
@@ -109,6 +110,7 @@ class Examen(db.Model):
         return {
             'id': self.id,
             'titulo': self.titulo,
+            'nombre_estudiante': self.nombre_estudiante,
             'descripcion': self.descripcion,
             'seccion_id': self.seccion_id,
             'plantilla_id': self.plantilla_id,

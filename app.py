@@ -251,7 +251,8 @@ def scan_examen():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
         
-        titulo = request.form.get('titulo', 'Examen sin título')
+        titulo = request.form.get('titulo', 'Evaluación sin título')
+        nombre_estudiante = request.form.get('nombre_estudiante', '').strip()
         seccion_id = request.form.get('seccion_id', type=int)
         plantilla_id = request.form.get('plantilla_id', type=int)
         
@@ -278,6 +279,7 @@ def scan_examen():
             # Crear examen en la base de datos
             examen = Examen(
                 titulo=titulo,
+                nombre_estudiante=nombre_estudiante or None,
                 seccion_id=seccion_id,
                 plantilla_id=plantilla_id,
                 imagen_path=f"/uploads/{filename}",

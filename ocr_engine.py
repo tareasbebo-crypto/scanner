@@ -152,22 +152,54 @@ class OCREngine:
         return answers
     
     def extract_free_text(self, text):
-        """Extrae texto para preguntas de respuesta libre"""
-        # Limpiar el texto
+        """Extrae texto para preguntas de respuesta libre.
+        
+        Intenta segmentar el texto por número de pregunta para 
+        tratar cada respuesta por separado (admite escritura cursiva/manuscrita).
+        """
         lines = text.split('\n')
-        cleaned_lines = []
+        
+        # Intentar separar respuestas por número de pregunta
+        # Patrón: "1.", "1)", "Pregunta 1:", "P1:", etc.
+        pregunta_pattern = re.compile(
+            r'^\s*(?:pregunta\s*)?(\d+)\s*[\.\)\:]\s*(.*)$', re.IGNORECASE
+        )
+        
+        bloques = {}  # {num_pregunta: texto_respuesta}
+        pregunta_actual = None
         
         for line in lines:
             line = line.strip()
-            # Ignorar líneas que parecen ser solo números de pregunta
-            if not re.match(r'^[\d\.\)\(:]+$', line):
-                if line:
-                    cleaned_lines.append(line)
+            if not line:
+                continue
+            
+            match = pregunta_pattern.match(line)
+            if match:
+                pregunta_actual = int(match.group(1))
+                resto = match.group(2).strip()
+                bloques[pregunta_actual] = resto
+            elif pregunta_actual is not None:
+                # Continuar acumulando texto de la misma pregunta
+                bloques[pregunta_actual] = bloques.get(pregunta_actual, '') + ' ' + line
+        
+        # Si no se pudo segmentar, devolver texto completo como una sola respuesta
+        if not bloques:
+            cleaned = [l.strip() for l in lines if l.strip() and not re.match(r'^[\d\.\)\(:]+$', l.strip())]
+            return {
+                'texto_completo': text,
+                'lineas_limpias': cleaned,
+                'palabras': len(text.split()),
+                'respuestas_por_pregunta': {}
+            }
+        
+        # Limpiar textos de cada bloque
+        respuestas_limpias = {k: v.strip() for k, v in bloques.items() if v.strip()}
         
         return {
             'texto_completo': text,
-            'lineas_limpias': cleaned_lines,
-            'palabras': len(text.split())
+            'lineas_limpias': [f"{k}. {v}" for k, v in respuestas_limpias.items()],
+            'palabras': len(text.split()),
+            'respuestas_por_pregunta': respuestas_limpias  # {1: "respuesta...", 2: "respuesta..."}
         }
     
     def detect_student_code(self, text):
@@ -247,85 +279,101 @@ class OCREngine:
         }
     
     def grade_free_response(self, extracted_text, preguntas):
-        """Califica respuestas de opción libre comparando palabras clave"""
+        """Califica respuestas de opción libre comparando palabras clave.
+        
+        Evalúa cada pregunta en su propio bloque (si el alumno numeró las respuestas),
+        o en el texto completo como fallback. Tolera errores ortográficos y sinónimos.
+        """
+        import difflib
+        import unicodedata
+        
+        def normalize(text):
+            if not text: return ""
+            text = unicodedata.normalize('NFKD', str(text)).encode('ASCII', 'ignore').decode('utf-8')
+            return text.lower()
+        
+        def buscar_palabra(sinonimos_grupo, texto_norm):
+            """Busca un grupo de sinónimos en el texto con tolerancia."""
+            for sinonimo in sinonimos_grupo:
+                sinonimo_norm = normalize(sinonimo)
+                if not sinonimo_norm:
+                    continue
+                # 1. Búsqueda exacta
+                if sinonimo_norm in texto_norm:
+                    return True
+                # 2. Búsqueda difusa por palabras
+                words = texto_norm.split()
+                s_words = sinonimo_norm.split()
+                n = len(s_words)
+                for i in range(len(words) - n + 1):
+                    fragmento = " ".join(words[i:i+n])
+                    if difflib.SequenceMatcher(None, sinonimo_norm, fragmento).ratio() >= 0.80:
+                        return True
+            return False
+        
         resultados = []
         puntos_totales = 0
         puntos_obtenidos = 0
         
-        # Texto completo del estudiante
-        texto_estudiante = extracted_text.get('texto_completo', '').lower()
+        # Obtener respuestas segmentadas por pregunta (si existen)
+        respuestas_por_pregunta = extracted_text.get('respuestas_por_pregunta', {})
+        texto_completo = extracted_text.get('texto_completo', '')
         
         for pregunta in preguntas:
             pregunta_num = pregunta.get('pregunta', 1)
             puntos = pregunta.get('puntos', 1)
+            
+            # Determinar el texto a analizar: bloque específico o texto completo
+            if pregunta_num in respuestas_por_pregunta:
+                texto_analizar = respuestas_por_pregunta[pregunta_num]
+                fuente = 'bloque'
+            elif str(pregunta_num) in respuestas_por_pregunta:
+                texto_analizar = respuestas_por_pregunta[str(pregunta_num)]
+                fuente = 'bloque'
+            else:
+                # Fallback: cada pregunta analizada en el texto completo
+                texto_analizar = texto_completo
+                fuente = 'texto_completo'
+            
+            texto_norm = normalize(texto_analizar)
             
             # Obtener palabras clave
             palabras_clave = pregunta.get('palabras_clave', [])
             if isinstance(palabras_clave, str):
                 palabras_clave = [p.strip() for p in palabras_clave.split(',')]
             
-            import difflib
-            import unicodedata
-            
-            def normalize(text):
-                if not text: return ""
-                # Quitar acentos y bajar a minúsculas
-                text = unicodedata.normalize('NFKD', str(text)).encode('ASCII', 'ignore').decode('utf-8')
-                return text.lower()
-                
-            texto_norm = normalize(texto_estudiante)
-            
-            # Contar coincidencias con tolerancia
+            # Contar coincidencias
             coincidencias_encontradas = 0
             encontradas = []
             
             for grupo_palabra in palabras_clave:
                 sinonimos = [s.strip() for s in grupo_palabra.split('|')]
-                match_found = False
-                
-                for sinonimo in sinonimos:
-                    sinonimo_norm = normalize(sinonimo)
-                    
-                    # 1. Búsqueda exacta
-                    if sinonimo_norm in texto_norm:
-                        match_found = True
-                        break
-                        
-                    # 2. Búsqueda difusa (tolera errores ortográficos como "celula" vs "celulas")
-                    words = texto_norm.split()
-                    s_words = len(sinonimo_norm.split())
-                    
-                    if s_words > 0 and len(words) >= s_words:
-                        for i in range(len(words) - s_words + 1):
-                            fragmento = " ".join(words[i:i+s_words])
-                            if difflib.SequenceMatcher(None, sinonimo_norm, fragmento).ratio() >= 0.8:
-                                match_found = True
-                                break
-                    if match_found:
-                        break
-                
-                if match_found:
+                if buscar_palabra(sinonimos, texto_norm):
                     coincidencias_encontradas += 1
-                    encontradas.append(grupo_palabra.split('|')[0].strip())
+                    encontradas.append(sinonimos[0])
             
-            # Calcular porcentaje de coincidencia
             total_palabras = len(palabras_clave)
             porcentaje = (coincidencias_encontradas / total_palabras * 100) if total_palabras > 0 else 0
             
-            # Calificar: puntos completos si hay más del 50% de palabras clave
-            if porcentaje >= 50:
+            # Calificación proporcional
+            if porcentaje >= 70:
                 puntos_obtenidos_q = puntos
-            elif porcentaje >= 30:
-                puntos_obtenidos_q = puntos * 0.5
+            elif porcentaje >= 40:
+                puntos_obtenidos_q = puntos * 0.6
+            elif porcentaje >= 20:
+                puntos_obtenidos_q = puntos * 0.3
             else:
                 puntos_obtenidos_q = 0
             
+            texto_preview = texto_analizar[:250] + '...' if len(texto_analizar) > 250 else texto_analizar
+            
             resultados.append({
                 'pregunta': pregunta_num,
-                'respuesta_texto': texto_estudiante[:200] + '...' if len(texto_estudiante) > 200 else texto_estudiante,
-                'respuesta_esperada': ', '.join(palabras_clave),
+                'respuesta_texto': texto_preview,
+                'respuesta_esperada': ', '.join([g.split('|')[0].strip() for g in palabras_clave]),
                 'palabras_clave_encontradas': encontradas,
                 'coincidencias': round(porcentaje, 2),
+                'fuente_analisis': fuente,
                 'puntos': puntos,
                 'puntos_obtenidos': round(puntos_obtenidos_q, 2)
             })
@@ -333,7 +381,6 @@ class OCREngine:
             puntos_totales += puntos
             puntos_obtenidos += puntos_obtenidos_q
         
-        # Calcular nota sobre 10
         nota = (puntos_obtenidos / puntos_totales * 10) if puntos_totales > 0 else 0
         
         return {
