@@ -13,11 +13,20 @@ from PIL import Image
 import pytesseract
 from datetime import datetime
 
+import platform
+
 # ============================================================
-# AUTO-DETECCIÓN DE TESSERACT EN WINDOWS
+# AUTO-DETECCIÓN DE TESSERACT (WINDOWS / LINUX)
 # ============================================================
 def _find_tesseract():
-    """Busca tesseract.exe en rutas comunes de Windows."""
+    """Busca tesseract.exe en rutas comunes de Windows o en el PATH de Linux."""
+    if platform.system() != 'Windows':
+        # En Linux/Docker (Render), simplemente lo buscamos en el PATH
+        import shutil
+        found = shutil.which('tesseract')
+        return found
+
+    # Candidatos para Windows
     candidatos = [
         r'C:\Program Files\Tesseract-OCR\tesseract.exe',
         r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
@@ -27,22 +36,16 @@ def _find_tesseract():
     for ruta in candidatos:
         if os.path.isfile(ruta):
             return ruta
-    # Intentar encontrarlo en PATH
+    
     import shutil
-    found = shutil.which('tesseract')
-    if found:
-        return found
-    return None
+    return shutil.which('tesseract')
 
 TESSERACT_PATH = _find_tesseract()
 if TESSERACT_PATH:
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
-    print(f"[OCR] Tesseract encontrado: {TESSERACT_PATH}")
+    print(f"[OCR] Tesseract configurado en: {TESSERACT_PATH}")
 else:
-    print("[OCR] ADVERTENCIA: Tesseract no encontrado. Descárgalo de:")
-    print("      https://github.com/UB-Mannheim/tesseract/releases")
-    print("      Instala en: C:\\Program Files\\Tesseract-OCR\\")
-    print("      Asegúrate de marcar 'Spanish' durante la instalación.")
+    print("[OCR] ADVERTENCIA: No se encontró Tesseract en el sistema.")
 
 TESSERACT_DISPONIBLE = TESSERACT_PATH is not None
 
@@ -207,91 +210,73 @@ class OCREngine:
 
         return img, gray, blur, thresh, processed
 
-    def _best_ocr(self, img_pil):
-        """Prueba varias configuraciones de Tesseract y devuelve el resultado con más texto."""
+    def _run_ocr_and_confidence(self, img_pil):
+        """Ejecuta Tesseract con una estrategia de reintentos agresiva."""
         best_text = ""
         best_words = 0
-        for cfg in self.OCR_CONFIGS:
-            try:
-                t = pytesseract.image_to_string(img_pil, lang=self.languages, config=cfg).strip()
-                words = len(t.split())
-                if words > best_words:
-                    best_text = t
-                    best_words = words
-            except Exception:
-                continue
-        return best_text
-
-    def extract_text(self, image_path, preprocess=True):
-        """Extrae texto de una imagen usando el mejor resultado entre varias configuraciones."""
-        try:
-            if preprocess:
-                _, _, _, _, processed = self.preprocess_image(image_path)
-                img_pil = Image.fromarray(processed)
-            else:
-                img_pil = Image.open(image_path)
-            return self._best_ocr(img_pil)
-        except Exception as e:
-            print(f"Error en OCR: {str(e)}")
-            return ""
-
-    def extract_text_with_confidence(self, image_path):
-        """Extrae texto con información de confianza usando la mejor versión de la imagen."""
-        try:
-            _, _, _, _, processed = self.preprocess_image(image_path)
-            img_pil = Image.fromarray(processed)
-
-            # Usar la config con más texto para el análisis detallado
-            best_config = self.custom_config
-            best_words = 0
-            best_text_raw = ""
-            for cfg in self.OCR_CONFIGS:
+        best_cfg = self.OCR_CONFIGS[0]
+        
+        # Estrategia de idiomas a probar (priorizamos español)
+        langs_to_try = [self.languages, 'spa', 'eng', 'spa+eng']
+        # Configuraciones de PSM a probar (3 y 4 son las más útiles)
+        psms = ['3', '4', '6']
+        
+        for lang in langs_to_try:
+            if best_words > 40: break
+            for psm in psms:
+                cfg = f'--oem 1 --psm {psm}'
                 try:
-                    t = pytesseract.image_to_string(img_pil, lang=self.languages, config=cfg).strip()
+                    t = pytesseract.image_to_string(img_pil, lang=lang, config=cfg).strip()
                     w = len(t.split())
                     if w > best_words:
                         best_words = w
-                        best_text_raw = t
-                        best_config = cfg
+                        best_text = t
+                        best_cfg = cfg
                 except Exception:
                     continue
+        
+        # Calcular confianza final
+        try:
+            data = pytesseract.image_to_data(img_pil, lang='spa' if 'spa' in self.languages else 'eng', 
+                                          config=best_cfg, output_type=pytesseract.Output.DICT)
+            confidences = [float(c) for i, c in enumerate(data['conf']) if str(data['text'][i]).strip() and float(c) > 0]
+            avg_conf = sum(confidences) / len(confidences) if confidences else 0
+        except:
+            avg_conf = 0
+            
+        return {'text': best_text.strip(), 'confidence': avg_conf, 'words': best_words}
 
-            # Obtener datos de confianza con la mejor config
-            data = pytesseract.image_to_data(
-                img_pil,
-                lang=self.languages,
-                config=best_config,
-                output_type=pytesseract.Output.DICT
-            )
+    def extract_text_with_confidence(self, image_path):
+        """Extrae texto con múltiples intentos de preprocesamiento."""
+        if not os.path.exists(image_path):
+            return {'text': '', 'confidence': 0, 'words': 0}
 
-            text_parts = []
-            confidences = []
+        try:
+            # MÉTODO 1: Imagen Original (A veces el preprocesado arruina letras finas)
+            img_orig = Image.open(image_path).convert('L')
+            result_orig = self._run_ocr_and_confidence(img_orig)
+
+            # Si ya tenemos buen texto, no hace falta más
+            if result_orig['words'] > 30:
+                return result_orig
+
+            # MÉTODO 2: Imagen Preprocesada (Recorte y binarización)
+            try:
+                _, _, _, _, processed = self.preprocess_image(image_path)
+                img_proc = Image.fromarray(processed)
+                result_proc = self._run_ocr_and_confidence(img_proc)
+                
+                # Devolver el mejor de los dos
+                if result_proc['words'] > result_orig['words']:
+                    return result_proc
+            except: pass
             
-            for i, text in enumerate(data['text']):
-                if text.strip():
-                    text_parts.append(text)
-                    conf = float(data['conf'][i])
-                    if conf > 0:
-                        confidences.append(conf)
-            
-            token_text = ' '.join(text_parts)
-            avg_confidence = sum(confidences) / len(confidences) if confidences else 0
-            
-            # Usar el texto con más palabras entre el de tokens y el de _best_ocr
-            final_text = best_text_raw if len(best_text_raw.split()) >= len(token_text.split()) else token_text
-            
-            return {
-                'text': final_text,
-                'confidence': avg_confidence,
-                'words': len(final_text.split())
-            }
+            return result_orig
+
         except Exception as e:
-            print(f"Error en OCR con confianza: {str(e)}")
-            return {
-                'text': '',
-                'confidence': 0,
-                'words': 0
-            }
+            print(f"Error fatal en OCR: {str(e)}")
+            return {'text': '', 'confidence': 0, 'words': 0}
+
     
     def extract_answers(self, text, answer_pattern=None):
         """Extrae respuestas de opción múltiple del texto reconocido"""
