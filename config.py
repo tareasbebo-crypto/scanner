@@ -14,6 +14,7 @@ class Config:
     """Configuración base"""
     SECRET_KEY = os.environ.get('SECRET_KEY', 'gradescanner-secret-key-2024')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
+    OCR_API_KEY = os.environ.get('OCR_API_KEY', 'helloworld')
     
     # Determinar entorno
     ENV = os.environ.get('FLASK_ENV', 'development')
