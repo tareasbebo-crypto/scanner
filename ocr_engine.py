@@ -34,47 +34,79 @@ class OCREngine:
     def extract_text_with_confidence(self, image_path, whitelist=None):
         """Extrae texto enviando la imagen a la API de OCR.space."""
         if not os.path.exists(image_path):
-            return {'text': '', 'confidence': 0, 'words': 0}
+            return {'text': '', 'confidence': 0, 'words': 0, 'error': 'File not found'}
 
         try:
             with open(image_path, 'rb') as f:
-                payload = {
-                    'apikey': self.api_key,
-                    'language': self.language,
-                    'isOverlayRequired': False,
-                    'detectOrientation': True,
-                    'scale': True,
-                    'OCREngine': 2 # Motor más moderno de OCR.space
-                }
+                image_data = f.read()
                 
-                # Intentamos la petición a la API
-                response = requests.post(
-                    self.api_url,
-                    files={'file': f},
-                    data=payload,
-                    timeout=30 
-                )
-                
-                if response.status_code != 200:
-                    print(f"[OCR Cloud] Error HTTP: {response.status_code}")
-                    return {'text': '', 'confidence': 0, 'words': 0}
-                
-                result = response.json()
-                
-                if result.get('OCRExitCode') == 1:
-                    parsed_results = result.get('ParsedResults', [])
-                    if parsed_results:
-                        text = parsed_results[0].get('ParsedText', '')
+            # Check file size (OCR.space has 2MB limit for free tier)
+            if len(image_data) > 2 * 1024 * 1024:
+                return {'text': '', 'confidence': 0, 'words': 0, 'error': 'Image too large (max 2MB)'}
+            
+            payload = {
+                'apikey': self.api_key,
+                'language': self.language,
+                'isOverlayRequired': False,
+                'detectOrientation': True,
+                'scale': True,
+                'OCREngine': 2
+            }
+            
+            response = requests.post(
+                self.api_url,
+                files={'file': ('image.jpg', image_data, 'image/jpeg')},
+                data=payload,
+                timeout=60
+            )
+            
+            if response.status_code != 200:
+                print(f"[OCR] HTTP Error: {response.status_code} - {response.text[:200]}")
+                return {'text': '', 'confidence': 0, 'words': 0, 'error': f'HTTP {response.status_code}'}
+            
+            result = response.json()
+            
+            # Debug: Log the API response
+            print(f"[OCR] ExitCode: {result.get('OCRExitCode')}")
+            if result.get('ErrorMessage'):
+                print(f"[OCR] ErrorMessage: {result.get('ErrorMessage')}")
+            
+            if result.get('OCRExitCode') == 1:
+                parsed_results = result.get('ParsedResults', [])
+                if parsed_results:
+                    text = parsed_results[0].get('ParsedText', '')
+                    if text and text.strip():
                         words = len(text.split())
-                        # OCR.space no devuelve una confianza media directa fácilmente sin overlay
-                        return {'text': text.strip(), 'confidence': 95.0, 'words': words}
+                        # Get confidence from result if available
+                        confidence = 90.0  # Default high confidence
+                        if 'TextConfidence' in parsed_results[0]:
+                            conf_data = parsed_results[0].get('TextConfidence', {})
+                            confidence = conf_data.get('Mean', 90.0)
+                        
+                        print(f"[OCR] Success: {words} words extracted")
+                        return {'text': text.strip(), 'confidence': confidence, 'words': words}
+                    else:
+                        return {'text': '', 'confidence': 0, 'words': 0, 'error': 'No text detected in image'}
                 
-                print(f"[OCR Cloud] Error de la API: {result.get('ErrorMessage')}")
-                return {'text': '', 'confidence': 0, 'words': 0}
+                return {'text': '', 'confidence': 0, 'words': 0, 'error': 'No parsed results'}
+            
+            # Handle API errors
+            error_msg = result.get('ErrorMessage', 'Unknown error')
+            if isinstance(error_msg, list):
+                error_msg = error_msg[0] if error_msg else 'Unknown error'
+            
+            print(f"[OCR] API Error: {error_msg}")
+            return {'text': '', 'confidence': 0, 'words': 0, 'error': str(error_msg)}
 
+        except requests.exceptions.Timeout:
+            print("[OCR] Timeout error")
+            return {'text': '', 'confidence': 0, 'words': 0, 'error': 'API timeout'}
+        except requests.exceptions.ConnectionError as e:
+            print(f"[OCR] Connection error: {e}")
+            return {'text': '', 'confidence': 0, 'words': 0, 'error': 'Connection failed'}
         except Exception as e:
-            print(f"[OCR Cloud] Error fatal: {str(e)}")
-            return {'text': '', 'confidence': 0, 'words': 0}
+            print(f"[OCR] Error: {str(e)}")
+            return {'text': '', 'confidence': 0, 'words': 0, 'error': str(e)}
 
     def extract_answers(self, text):
         """Extrae respuestas del texto reconocido"""

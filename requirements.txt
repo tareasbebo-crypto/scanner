@@ -2,40 +2,29 @@
 # Sistema de revisión de notas con escáner
 
 # Web Framework
-Flask==3.0.0
+Flask==3.0.3
 Flask-CORS==4.0.0
+Werkzeug==3.0.3
 gunicorn==21.2.0
 
-# Database - Soporta SQLite (local) y PostgreSQL (Supabase)
+# Database
 Flask-SQLAlchemy==3.1.1
-SQLAlchemy>=2.0.36
-psycopg2-binary==2.9.9
-
-# Supabase
-supabase==2.3.4
+psycopg2-binary>=2.9.11
 
 # OCR
-pytesseract>=0.3.11
-Pillow==10.4.0
+pytesseract==0.3.10
+Pillow==10.1.0
 
-# Image Processing
+# Image Processing  
 opencv-python-headless==4.8.1.78
-numpy==1.26.4
+numpy==1.26.2
 
-# Excel Export
-openpyxl==3.1.2
-
-# PDF Generation
-reportlab==4.0.9
-
-# File Upload
-Werkzeug==3.0.1
-
-# Date/Time
-python-dateutil==2.8.2
+# Excel & PDF Export
+xlsxwriter==3.2.0
+reportlab==4.2.0
 
 # Environment Variables
-python-dotenv==1.0.0
+python-dotenv==1.1.0
 
 # HTTP Client
 requests==2.31.0

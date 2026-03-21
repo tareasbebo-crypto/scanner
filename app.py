@@ -237,9 +237,50 @@ def delete_plantilla(id):
 
 @app.route('/api/ocr/status', methods=['GET'])
 def ocr_status():
-    """Verifica el estado del motor OCR y Tesseract"""
+    """Verifica el estado del motor OCR"""
     status = ocr_engine.check_tesseract()
+    
+    # Agregar información adicional de diagnóstico
+    status['api_key_configured'] = bool(ocr_engine.api_key and ocr_engine.api_key != '')
+    status['api_key_prefix'] = ocr_engine.api_key[:4] + '...' if ocr_engine.api_key and len(ocr_engine.api_key) > 4 else 'N/A'
+    status['api_url'] = ocr_engine.api_url
+    status['language'] = ocr_engine.language
+    status['last_error'] = getattr(ocr_engine, 'last_error', None)
+    
     return jsonify(status), 200
+
+
+@app.route('/api/ocr/test', methods=['POST'])
+def ocr_test():
+    """Endpoint de prueba para verificar el OCR con una imagen de prueba"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No se recibió ningún archivo'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No se seleccionó ningún archivo'}), 400
+    
+    if file:
+        # Guardar temporalmente
+        import tempfile
+        import uuid
+        
+        suffix = '.' + file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else '.jpg'
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            file.save(tmp.name)
+            tmp_path = tmp.name
+        
+        try:
+            # Probar OCR
+            result = ocr_engine.extract_text_with_confidence(tmp_path)
+            return jsonify(result)
+        finally:
+            # Limpiar
+            import os
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+    
+    return jsonify({'error': 'Tipo de archivo no permitido'}), 400
 
 @app.route('/api/scan', methods=['POST'])
 def scan_examen():
@@ -275,6 +316,21 @@ def scan_examen():
             # Procesar imagen con whitelist si es multiple choice
             whitelist = "ABCDEVF0123456789.:) " if tipo_examen == 'multiple_choice' else None
             result = ocr_engine.extract_text_with_confidence(filepath, whitelist)
+            
+            # Verificar si hay error en OCR
+            ocr_error = result.get('error')
+            if ocr_error:
+                return jsonify({
+                    'error': f'Error de OCR: {ocr_error}',
+                    'details': 'La imagen no pudo ser procesada. Verifica que la imagen sea legible y no exceda 2MB.'
+                }), 500
+            
+            # Verificar que se extrajo texto
+            if not result.get('text') or result.get('words', 0) == 0:
+                return jsonify({
+                    'error': 'No se detectó texto en la imagen',
+                    'details': 'La imagen puede ser ilegible o estar vacía. Intenta con una imagen más clara.'
+                }), 500
             
             # Extraer respuestas según el tipo de plantilla
             if tipo_examen == 'multiple_choice':
@@ -336,7 +392,8 @@ def scan_examen():
                 'ocr': {
                     'text': result['text'],
                     'confidence': result['confidence'],
-                    'words': result['words']
+                    'words': result.get('words', 0),
+                    'error': result.get('error')
                 },
                 'extracted_answers': extracted_answers,
                 'grade': grade_result
