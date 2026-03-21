@@ -253,14 +253,49 @@ class OCREngine:
             if isinstance(palabras_clave, str):
                 palabras_clave = [p.strip() for p in palabras_clave.split(',')]
             
-            # Contar coincidencias
+            import difflib
+            import unicodedata
+            
+            def normalize(text):
+                if not text: return ""
+                # Quitar acentos y bajar a minúsculas
+                text = unicodedata.normalize('NFKD', str(text)).encode('ASCII', 'ignore').decode('utf-8')
+                return text.lower()
+                
+            texto_norm = normalize(texto_estudiante)
+            
+            # Contar coincidencias con tolerancia
             coincidencias_encontradas = 0
             encontradas = []
-            for palabra in palabras_clave:
-                palabra_lower = palabra.lower()
-                if palabra_lower in texto_estudiante:
+            
+            for grupo_palabra in palabras_clave:
+                sinonimos = [s.strip() for s in grupo_palabra.split('|')]
+                match_found = False
+                
+                for sinonimo in sinonimos:
+                    sinonimo_norm = normalize(sinonimo)
+                    
+                    # 1. Búsqueda exacta
+                    if sinonimo_norm in texto_norm:
+                        match_found = True
+                        break
+                        
+                    # 2. Búsqueda difusa (tolera errores ortográficos como "celula" vs "celulas")
+                    words = texto_norm.split()
+                    s_words = len(sinonimo_norm.split())
+                    
+                    if s_words > 0 and len(words) >= s_words:
+                        for i in range(len(words) - s_words + 1):
+                            fragmento = " ".join(words[i:i+s_words])
+                            if difflib.SequenceMatcher(None, sinonimo_norm, fragmento).ratio() >= 0.8:
+                                match_found = True
+                                break
+                    if match_found:
+                        break
+                
+                if match_found:
                     coincidencias_encontradas += 1
-                    encontradas.append(palabra)
+                    encontradas.append(grupo_palabra.split('|')[0].strip())
             
             # Calcular porcentaje de coincidencia
             total_palabras = len(palabras_clave)
