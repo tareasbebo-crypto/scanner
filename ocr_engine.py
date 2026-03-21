@@ -110,33 +110,63 @@ class OCREngine:
 
     def extract_answers(self, text):
         """Extrae respuestas del texto reconocido"""
+        # Log del texto para depuración remota
+        print(f"\n--- DEBUG OCR TEXT START ---\n{text}\n--- DEBUG OCR TEXT END ---\n")
+        
         answers = []
+        # Patrones robustos para OCR en condiciones difíciles (skew, perspectiva)
+        # 1. Soporta números con varios separadores (., :, ), -, ,, etc)
+        # 2. Soporta símbolos de marcado: ●, *, X, V, •, ■, ☒
+        # 4. Soporta letras de opción: A-F
         patterns = [
-            r'(\d+)[\.\):]\s*([A-Fa-fVv])',
-            r'preg\.?\s*(\d+)[\.\):]\s*([A-Fa-fVv])',
-            r'pregunta\s*(\d+)[\.\):]\s*([A-Fa-fVv])',
-            r'p\.?\s*(\d+)[\.\):]\s*([A-Fa-fVv])',
+            # Formato estándar con separador flexible: 1. A o 1: B
+            r'(\d+)\s*[\.\,;:\)\-\/_]?\s*([A-F]|[VvFf]|[●\*•■☒])',
+            
+            # Formato con prefijo: Pregunta 1: A
+            r'(?:preg|pregunta|p)\.?\s*(\d+)\s*[\.\,;:\)\-\/_]?\s*([A-F]|[VvFf]|[●\*•■☒])',
+            
+            # Formato de lista simple (número seguido de espacio y letra/símbolo): 1 A
+            r'^\s*(\d+)\s+([A-F]|[VvFf]|[●\*•■☒])',
+            
+            # Formato de marcado entre paréntesis: 1 (X)
+            r'(\d+)\s*[\.\,;:\)\-\/_]?\s*\(([A-F]|[VvFf]|X|x|●|\*|•)\)',
         ]
         
         for pattern in patterns:
-            matches = re.finditer(pattern, text, re.IGNORECASE)
+            # MULTILINE para ^ al inicio de línea, IGNORECASE para letras
+            matches = re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE)
             for match in matches:
-                pregunta_num = int(match.group(1))
-                respuesta = match.group(2).upper()
-                answers.append({
-                    'pregunta': pregunta_num,
-                    'respuesta': respuesta,
-                    'match': match.group(0)
-                })
+                try:
+                    pregunta_num = int(match.group(1))
+                    val = match.group(2).upper()
+                    
+                    # Normalización de símbolos a caracteres estándar si es posible
+                    if val in ['●', '*', '•', '■', '☒']:
+                        respuesta = val # Mantenemos el símbolo para revisión manual o lógica posterior
+                    else:
+                        respuesta = val
+                        
+                    answers.append({
+                        'pregunta': pregunta_num,
+                        'respuesta': respuesta,
+                        'match': match.group(0).strip()
+                    })
+                    print(f"[OCR] Match encontrado: {match.group(0).strip()} -> P{pregunta_num}:{respuesta}")
+                except Exception as e:
+                    print(f"[OCR] Error procesando match: {e}")
         
+        # Ordenar por número de pregunta
         answers.sort(key=lambda x: x['pregunta'])
-        # Eliminar duplicados
+        
+        # Eliminar duplicados prefiriendo el primer match encontrado (el más cercano al número)
         seen = set()
         unique_answers = []
         for a in answers:
             if a['pregunta'] not in seen:
                 unique_answers.append(a)
                 seen.add(a['pregunta'])
+        
+        print(f"[OCR] Total respuestas únicas detectadas: {len(unique_answers)}")
         return unique_answers
 
     def detect_student_code(self, text):
